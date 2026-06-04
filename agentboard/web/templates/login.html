@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="login-container">
+    <div class="login-card">
+        <h1>🧠 Agent Session Workboard</h1>
+        <p class="login-subtitle">Remote access requires authentication</p>
+
+        <form class="login-form" method="GET" action="/">
+            <div class="form-group">
+                <label for="token">Bearer Token</label>
+                <input
+                    type="password"
+                    id="token"
+                    name="token"
+                    placeholder="Enter your access token"
+                    autocomplete="off"
+                    autofocus
+                    required
+                />
+                <p class="form-hint">
+                    The token is displayed when you start the server with
+                    <code>agentboard web --remote</code>.
+                </p>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+                🔑 Access Dashboard
+            </button>
+        </form>
+
+        <div class="login-footer">
+            <p>
+                <a href="/health">Health Check</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<style>
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 70vh;
+    padding: 24px;
+}
+
+.login-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 40px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+}
+
+.login-card h1 {
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.login-subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 32px;
+}
+
+.login-form {
+    text-align: left;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 15px;
+    font-family: monospace;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+}
+
+.form-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+.form-hint code {
+    background: var(--bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.btn-block {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+}
+
+.login-footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.login-footer a {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+</style>
+
+{% endblock %}

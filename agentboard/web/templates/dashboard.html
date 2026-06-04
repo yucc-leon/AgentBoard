@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="detail-header">
+    <h1>Agent Sessions</h1>
+    <div style="display:flex; gap:8px;">
+        <button class="btn" onclick="refreshSessions()" id="refresh-btn">↻ Refresh</button>
+        <button class="btn" onclick="openNewSession()">＋ New project…</button>
+    </div>
+</div>
+
+<div class="search-bar">
+    <input type="text" class="search-input" id="search" placeholder="Filter sessions…"
+           oninput="filterCards()">
+</div>
+
+{% if not groups %}
+<div class="empty-state">
+    <p>No sessions or conversations found.</p>
+    <p class="hint">Start an agent in tmux (e.g. <code>tmux new -s work; codex</code>)
+       or click <strong>New Session</strong>.</p>
+</div>
+{% endif %}
+
+<div id="project-list">
+{% for g in groups %}
+<details class="project-group" {% if g.live %}open{% endif %} data-search="{{ (g.project ~ ' ' ~ g.machine)|lower }}">
+    <summary class="project-summary">
+        <span class="project-name">📂 {{ g.project }}</span>
+        {% if g.machine != 'local' %}<span class="machine-badge machine-ssh">🌐 {{ g.machine }}</span>{% endif %}
+        {% if g.live|length %}<span class="badge status-active">● {{ g.live|length }} live</span>{% endif %}
+        <span class="hint">{{ g.convs|length }} conversation{{ '' if g.convs|length == 1 else 's' }}</span>
+        <button class="btn project-new"
+            onclick="event.preventDefault(); event.stopPropagation(); openNewSession({{ g.machine|tojson }}, {{ g.cwd|tojson }})">
+            ＋ New session
+        </button>
+    </summary>
+
+    {% for row in g.live %}
+    {% set s = row.s %}
+    <a class="workline-card project-item" href="/s/{{ s.machine }}/{{ s.name }}"
+       data-search="{{ (row.title ~ ' ' ~ s.name ~ ' ' ~ s.cwd ~ ' ' ~ s.cli ~ ' ' ~ g.project)|lower }}">
+        <div class="wl-header">
+            <div class="wl-title">🟢 {{ row.title or s.name }}</div>
+            <div class="wl-badges">
+                <span class="badge source-{{ s.cli }}">{{ s.cli }}</span>
+                {% if row.open_items %}<span class="badge status-review" title="possibly-missed items">⚑ {{ row.open_items }}</span>{% endif %}
+            </div>
+        </div>
+        {% if row.next_action %}<div class="wl-next-action">→ {{ row.next_action }}</div>{% endif %}
+        <div class="wl-meta"><span>🖧 {{ s.name }}</span></div>
+    </a>
+    {% endfor %}
+
+    {% for row in g.convs %}
+    {% set c = row.c %}
+    <a class="workline-card project-item"
+       href="{{ ('/s/' ~ c.machine ~ '/' ~ c.live_tmux) if c.live_tmux else ('/c/' ~ c.machine ~ '/' ~ c.cli ~ '/' ~ c.session_id) }}"
+       data-search="{{ (row.title ~ ' ' ~ c.project ~ ' ' ~ c.cli)|lower }}">
+        <div class="wl-header">
+            <div class="wl-title">{{ row.title }}</div>
+            <div class="wl-badges">
+                {% if c.live_tmux %}<span class="badge status-active">● live</span>{% endif %}
+                <span class="badge source-{{ c.cli }}">{{ c.cli }}</span>
+                {% if row.open_items %}<span class="badge status-review" title="possibly-missed items">⚑ {{ row.open_items }}</span>{% endif %}
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</details>
+{% endfor %}
+</div>
+
+<!-- New Session modal -->
+<div id="new-modal" style="display:none;">
+    <div class="modal-overlay" onclick="closeNewSession()"></div>
+    <div class="modal"><div class="modal-content">
+        <h3 id="ns-modal-title">🚀 New session</h3>
+        <p class="hint">Launches an agent CLI inside a fresh tmux session.</p>
+        <div class="form-group">
+            <label>Machine</label>
+            <select class="form-input" id="ns-machine" onchange="loadDirs('~')">
+                {% for m in machines %}
+                <option value="{{ m.name }}">{{ m.name }} ({{ m.type }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Working directory</label>
+            <div style="display:flex; gap:6px;">
+                <input class="form-input" id="ns-cwd" placeholder="~/projects/…" value="~">
+                <button class="btn" onclick="loadDirs(document.getElementById('ns-cwd').value)">Browse</button>
+            </div>
+            <div id="ns-dirs" style="margin-top:6px; max-height:160px; overflow:auto;
+                 font-size:13px; display:flex; flex-direction:column; gap:2px;"></div>
+        </div>
+        <div class="form-group">
+            <label>Agent</label>
+            <select class="form-input" id="ns-command">
+                <option value="codex">codex</option>
+                <option value="claude">claude</option>
+                <option value="__custom__">custom command…</option>
+            </select>
+            <input class="form-input" id="ns-custom" placeholder="custom command"
+                   style="display:none; margin-top:6px;">
+        </div>
+        <div class="form-group">
+            <label>Session name</label>
+            <input class="form-input" id="ns-name" placeholder="auto from directory">
+        </div>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeNewSession()">Cancel</button>
+            <button class="btn btn-primary" id="ns-create" onclick="createSession()">Create</button>
+        </div>
+    </div></div>
+</div>
+
+<script>
+function toast(msg) {
+    const t = document.createElement('div');
+    t.className = 'toast'; t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 2000);
+}
+
+function filterCards() {
+    const q = document.getElementById('search').value.toLowerCase();
+    document.querySelectorAll('.project-group').forEach(g => {
+        let any = false;
+        const groupMatch = g.dataset.search.includes(q);
+        g.querySelectorAll('.project-item').forEach(c => {
+            const show = groupMatch || c.dataset.search.includes(q);
+            c.style.display = show ? '' : 'none';
+            if (show) any = true;
+        });
+        g.style.display = any ? '' : 'none';
+        if (q) g.open = true;   // expand groups while searching
+    });
+}
+
+function refreshSessions() {
+    document.getElementById('refresh-btn').classList.add('btn-loading');
+    fetch('/api/sessions?refresh=true').then(() => location.reload());
+}
+
+const modal = document.getElementById('new-modal');
+function openNewSession(machine, cwd) {
+    modal.style.display = 'block';
+    const title = document.getElementById('ns-modal-title');
+    if (machine) document.getElementById('ns-machine').value = machine;
+    if (cwd) {
+        // Open directly in this project's directory.
+        document.getElementById('ns-cwd').value = cwd;
+        title.textContent = '🚀 New session in ' + (cwd.split('/').pop() || cwd);
+        loadDirs(cwd);
+    } else {
+        title.textContent = '🚀 New session';
+        loadDirs('~');
+    }
+}
+function closeNewSession() { modal.style.display = 'none'; }
+
+document.getElementById('ns-command').addEventListener('change', e => {
+    document.getElementById('ns-custom').style.display =
+        e.target.value === '__custom__' ? 'block' : 'none';
+});
+
+function loadDirs(path) {
+    const machine = document.getElementById('ns-machine').value;
+    const box = document.getElementById('ns-dirs');
+    box.innerHTML = '<span class="hint">loading…</span>';
+    fetch(`/api/dirs?machine=${encodeURIComponent(machine)}&path=${encodeURIComponent(path)}`)
+        .then(r => r.json()).then(d => {
+            if (d.error) { box.innerHTML = `<span class="hint">${d.error}</span>`; return; }
+            document.getElementById('ns-cwd').value = d.path;
+            box.innerHTML = '';
+            const up = document.createElement('a');
+            up.textContent = '⬆ ..'; up.style.cursor = 'pointer'; up.style.color = 'var(--text-secondary)';
+            up.onclick = () => loadDirs(d.path.replace(/\/[^/]+\/?$/, '') || '/');
+            box.appendChild(up);
+            d.entries.forEach(e => {
+                const a = document.createElement('a');
+                a.textContent = '📁 ' + e.name; a.style.cursor = 'pointer'; a.style.color = 'var(--accent)';
+                a.onclick = () => loadDirs(e.path);
+                box.appendChild(a);
+            });
+        }).catch(() => box.innerHTML = '<span class="hint">failed to list</span>');
+}
+
+function createSession() {
+    const machine = document.getElementById('ns-machine').value;
+    const cwd = document.getElementById('ns-cwd').value;
+    let command = document.getElementById('ns-command').value;
+    if (command === '__custom__') command = document.getElementById('ns-custom').value;
+    let name = document.getElementById('ns-name').value;
+    if (!name) name = (cwd.split('/').pop() || 'agent') + '-' + command.split(' ')[0];
+    const btn = document.getElementById('ns-create');
+    btn.classList.add('btn-loading'); btn.textContent = 'Creating…';
+    fetch('/api/sessions', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({machine, cwd, command, name}),
+    }).then(r => r.json()).then(d => {
+        if (d.ok) { location.href = `/s/${d.machine}/${d.name}`; }
+        else { toast(d.error || 'failed'); btn.classList.remove('btn-loading'); btn.textContent = 'Create'; }
+    }).catch(() => { toast('request failed'); btn.classList.remove('btn-loading'); btn.textContent = 'Create'; });
+}
+</script>
+{% endblock %}

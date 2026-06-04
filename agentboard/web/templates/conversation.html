@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ conv.title }} — AgentBoard{% endblock %}
+{% block content %}
+
+<div class="back-link"><a href="/">← All sessions</a></div>
+
+<div class="detail-header">
+    <h1>
+        <span class="badge source-{{ conv.cli }}">{{ conv.cli }}</span>
+        {{ conv.project or 'conversation' }}
+    </h1>
+    <div style="display:flex; gap:8px;">
+        {% if conv.live_tmux %}
+        <a class="btn btn-accent" href="/s/{{ conv.machine }}/{{ conv.live_tmux }}">🟢 Open live session</a>
+        {% else %}
+        <button class="btn btn-primary" id="resume-btn" onclick="resume()">▶ Resume</button>
+        {% endif %}
+    </div>
+</div>
+<div class="hint">📁 {{ conv.cwd }} · <code>{{ conv.session_id }}</code></div>
+
+<!-- Summary panel -->
+<div class="detail-section">
+    <h2 style="display:flex; justify-content:space-between; align-items:center;">
+        <span>Summary</span>
+        <button class="btn" id="sum-btn" onclick="genSummary()" style="text-transform:none; font-size:12px;">↻ Generate</button>
+    </h2>
+    <div id="summary-body">
+        <div id="sum-content"></div>
+        {% if not card %}
+        <p class="hint" id="sum-empty">No summary yet. Click <strong>Generate</strong> to recap
+           this conversation and surface possibly-missed items.</p>
+        {% endif %}
+    </div>
+</div>
+
+<h2 style="margin:16px 0 8px;">Transcript</h2>
+<div id="messages"><p class="hint">Loading…</p></div>
+
+<script>
+const MACHINE = {{ conv.machine | tojson }};
+const CLI = {{ conv.cli | tojson }};
+const SID = {{ conv.session_id | tojson }};
+const CARD = {{ (card | tojson) if card else 'null' }};
+const base = `/api/conversations/${encodeURIComponent(MACHINE)}/${encodeURIComponent(CLI)}/${encodeURIComponent(SID)}`;
+
+function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;
+    document.body.appendChild(t);setTimeout(()=>t.remove(),2000);}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+function renderCard(c){
+    if(!c)return;
+    let h='';
+    if(c.title)h+=`<div class="wl-title" style="margin-bottom:8px;">${esc(c.title)}</div>`;
+    if(c.summary)h+=`<p style="margin-bottom:10px;">${esc(c.summary)}</p>`;
+    h+='<dl>';
+    if(c.current_state)h+=`<dt>Current</dt><dd>${esc(c.current_state)}</dd>`;
+    if(c.next_action)h+=`<dt>Next</dt><dd class="next-action">${esc(c.next_action)}</dd>`;
+    h+='</dl>';
+    if(c.open_items&&c.open_items.length){
+        h+='<h2 style="margin-top:12px;">Possibly missed</h2><ul class="avoid-list">';
+        c.open_items.forEach(i=>h+=`<li>${esc(i)}</li>`);h+='</ul>';
+    }
+    document.getElementById('sum-content').innerHTML=h;
+    const e=document.getElementById('sum-empty'); if(e)e.remove();
+}
+if(CARD)renderCard(CARD);
+
+function genSummary(){
+    const b=document.getElementById('sum-btn');
+    b.classList.add('btn-loading');b.textContent='Thinking…';
+    fetch(base+'/summary?force=true').then(r=>r.json()).then(d=>{
+        b.classList.remove('btn-loading');b.textContent='↻ Regenerate';
+        if(d.error){toast(d.detail||d.error);return;}
+        renderCard(d);
+    }).catch(()=>{b.classList.remove('btn-loading');b.textContent='↻ Generate';toast('failed');});
+}
+
+function loadTranscript(){
+    fetch(base+'/transcript').then(r=>r.json()).then(d=>{
+        const box=document.getElementById('messages');
+        const msgs=d.messages||[];
+        if(!msgs.length){box.innerHTML='<p class="hint">No messages parsed.</p>';return;}
+        box.innerHTML=msgs.map(m=>{
+            const role=m.role==='user'?'user':'assistant';
+            return `<div class="msg-item msg-${role}"><span class="msg-role">${role}</span>
+                <div class="msg-content">${esc(m.text)}</div></div>`;
+        }).join('');
+    }).catch(()=>{});
+}
+
+function resume(){
+    const b=document.getElementById('resume-btn');
+    b.classList.add('btn-loading');b.textContent='Starting…';
+    fetch(base+'/resume',{method:'POST'}).then(r=>r.json()).then(d=>{
+        if(d.ok){location.href=`/s/${d.machine}/${d.name}`;}
+        else{toast(d.error||'failed');b.classList.remove('btn-loading');b.textContent='▶ Resume';}
+    }).catch(()=>{toast('failed');b.classList.remove('btn-loading');b.textContent='▶ Resume';});
+}
+
+loadTranscript();
+</script>
+{% endblock %}
