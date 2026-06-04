@@ -1,0 +1,21 @@
+{"timestamp":"2026-05-15T10:00:00+08:00","type":"session_meta","payload":{"session_id":"demo-codex-drift-001","cwd":"/home/user/projects/codescout"}}
+{"timestamp":"2026-05-15T10:00:05+08:00","type":"event_msg","payload":{"role":"user","content":[{"type":"text","text":"帮我写一个数据预处理脚本，把 raw_data/ 下的 JSONL 转成 Parquet"}]}}
+{"timestamp":"2026-05-15T10:02:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Write","arguments":{"file_path":"preprocess.py"}}}
+{"timestamp":"2026-05-15T10:10:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Bash","arguments":{"command":"python preprocess.py"}}}
+{"timestamp":"2026-05-15T10:11:00+08:00","type":"event_msg","payload":{"role":"user","content":[{"type":"text","text":"报错了，MemoryError"}]}}
+{"timestamp":"2026-05-15T10:12:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Read","arguments":{"file_path":"preprocess.py"}}}
+{"timestamp":"2026-05-15T10:15:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Write","arguments":{"file_path":"preprocess.py","content":"# Added chunked reading"}}}
+{"timestamp":"2026-05-15T10:16:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Bash","arguments":{"command":"python preprocess.py"}}}
+{"timestamp":"2026-05-15T10:17:00+08:00","type":"event_msg","payload":{"role":"user","content":[{"type":"text","text":"还是 MemoryError，能换个思路吗？"}]}}
+{"timestamp":"2026-05-15T10:20:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Write","arguments":{"file_path":"preprocess_v2.py","content":"# Using streaming + mmap"}}}
+{"timestamp":"2026-05-15T10:21:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Bash","arguments":{"command":"python preprocess_v2.py"}}}
+{"timestamp":"2026-05-15T10:22:00+08:00","type":"event_msg","payload":{"role":"user","content":[{"type":"text","text":"还是不行，算了先不管这个了，帮我看看 eval 的问题"}]}}
+{"timestamp":"2026-05-15T10:25:00+08:00","type":"event_msg","payload":{"role":"user","content":[{"type":"text","text":"当前 eval pipeline 在 bf16 下报 CUDA OOM，帮我排查"}]}}
+{"timestamp":"2026-05-15T10:30:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Read","arguments":{"file_path":"eval.py"}}}
+{"timestamp":"2026-05-15T10:35:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Read","arguments":{"file_path":"config.yaml"}}}
+{"timestamp":"2026-05-15T10:40:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Bash","arguments":{"command":"python eval.py --dtype bf16 2>&1 | tail -20"}}}
+{"timestamp":"2026-05-15T10:41:00+08:00","type":"event_msg","payload":{"role":"user","content":[{"type":"text","text":"CUDA OOM: tried to allocate 2.0 GiB on GPU 0"}]}}
+{"timestamp":"2026-05-15T10:45:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Write","arguments":{"file_path":"eval.py","content":"# Changed to fp16"}}}
+{"timestamp":"2026-05-15T10:46:00+08:00","type":"response_item","payload":{"type":"tool_call","name":"Bash","arguments":{"command":"python eval.py --dtype fp16"}}}
+{"timestamp":"2026-05-15T10:47:00+08:00","type":"event_msg","payload":{"role":"user","content":[{"type":"text","text":"fp16 也 OOM..."}]}}
+{"timestamp":"2026-05-15T10:50:00+08:00","type":"event_msg","payload":{"role":"user","content":[{"type":"text","text":"先 /clear 吧，这个 session 太乱了"}]}}
