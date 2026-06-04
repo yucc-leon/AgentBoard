@@ -13,6 +13,7 @@ hit on every page render.
 
 from __future__ import annotations
 
+import subprocess
 import time
 from dataclasses import dataclass, field
 
@@ -21,6 +22,59 @@ from agentboard.core.tmux import Pane, Tmux
 from agentboard.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Substrings that identify an agent CLI in a process's full command line.
+_PROC_SIGNATURES: list[tuple[tuple[str, ...], str]] = [
+    (("anthropic-ai/claude-code", "claude-code", "/claude ", "claude"), "claude"),
+    (("openai/codex", "/codex", "codex"), "codex"),
+    (("gemini",), "gemini"),
+    (("opencode",), "opencode"),
+    (("aider",), "aider"),
+]
+
+
+def _local_process_tree() -> tuple[dict[int, str], dict[int, list[int]]]:
+    """Snapshot local processes once: (args_by_pid, children_by_ppid)."""
+    args_by_pid: dict[int, str] = {}
+    children: dict[int, list[int]] = {}
+    try:
+        proc = subprocess.run(
+            ["ps", "-axo", "pid=,ppid=,args="],
+            capture_output=True, text=True, timeout=8,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return args_by_pid, children
+    for line in proc.stdout.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 2:
+            continue
+        try:
+            pid, ppid = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        args_by_pid[pid] = parts[2] if len(parts) > 2 else ""
+        children.setdefault(ppid, []).append(pid)
+    return args_by_pid, children
+
+
+def _cli_from_tree(pid: int, tree: tuple[dict[int, str], dict[int, list[int]]]) -> str | None:
+    """Find an agent CLI by scanning a pane's process and its descendants."""
+    if pid <= 1:  # never walk from init/kernel — that would match the whole box
+        return None
+    args_by_pid, children = tree
+    seen: set[int] = set()
+    stack = [pid]
+    while stack:
+        p = stack.pop()
+        if p in seen:
+            continue
+        seen.add(p)
+        low = args_by_pid.get(p, "").lower()
+        for needles, cli in _PROC_SIGNATURES:
+            if any(n in low for n in needles):
+                return cli
+        stack.extend(children.get(p, []))
+    return None
 
 # (substring, cli_type, is_agent). First match wins; checked against the pane's
 # current command (and, when that's a generic shell/interpreter, the process
@@ -117,7 +171,19 @@ def _sessions_from_panes(mc: MachineConfig, panes: list[Pane]) -> list[Session]:
     codex_home = mc.codex_home or "~/.codex"
     claude_home = mc.claude_home or "~/.claude"
 
+    # Local agent CLIs (codex/claude) usually appear as a generic `node` pane.
+    # A one-shot process snapshot lets us read each pane's real command line and
+    # tell codex from claude precisely; cwd-log inference is only a fallback.
+    tree = _local_process_tree() if local else ({}, {})
+
     def _classify(p: Pane) -> tuple[str, bool]:
+        cli, is_agent = classify_command(p.command)
+        if is_agent:
+            return cli, is_agent
+        if local:
+            from_proc = _cli_from_tree(p.pid, tree)
+            if from_proc:
+                return from_proc, True
         return classify_pane(p.command, p.cwd, local=local,
                              codex_home=codex_home, claude_home=claude_home)
 

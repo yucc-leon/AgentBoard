@@ -37,7 +37,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from agentboard.config import Config, MachineConfig
 from agentboard.core.sessions import Session, SessionRegistry
-from agentboard.core.transcript import TranscriptState, local_transcript_for, parse_screen
+from agentboard.core.transcript import TranscriptState, parse_screen
 from agentboard.logging import get_logger
 
 logger = get_logger(__name__)
@@ -78,18 +78,14 @@ def create_app(config: Config) -> FastAPI:
         return registry.get(machine, name, refresh=refresh)
 
     def _transcript(session: Session) -> TranscriptState:
-        """Best-available transcript: JSONL for local agents, screen otherwise."""
-        if session.machine_type == "local" and session.is_agent:
-            mc = _machine(session.machine)
-            state = local_transcript_for(
-                session.cwd,
-                session.cli,
-                codex_home=(mc.codex_home if mc else None) or "~/.codex",
-                claude_home=(mc.claude_home if mc else None) or "~/.claude",
-            )
-            if state and state.messages:
-                return state
-        # Fallback / remote: parse the captured screen.
+        """Live view of *this* pane via capture-pane.
+
+        We deliberately do NOT guess a JSONL by cwd here: several agents can run
+        in the same directory, and the newest log for that cwd usually belongs to
+        a different pane — which would show a foreign conversation. The pane's
+        own screen is always the truthful live view. Clean JSONL chat is served
+        on the conversation page, where the session id is unambiguous.
+        """
         tmux = registry.tmux_for(session.machine)
         text = tmux.capture(session.name, lines=400) if tmux else ""
         return parse_screen(text)
