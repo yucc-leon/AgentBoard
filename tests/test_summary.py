@@ -53,3 +53,16 @@ def test_cache_invalidated_when_transcript_grows(tmp_path):
 
 def test_missing_card_returns_none(tmp_path):
     assert cached_card(_cfg(tmp_path), "local/nope") is None
+
+
+def test_title_cache_roundtrip(tmp_path):
+    import json
+
+    from agentboard.intelligence.summary import _titles_path, cached_title
+
+    cfg = _cfg(tmp_path)
+    assert cached_title(cfg, "claude/abc") is None
+    p = _titles_path(cfg)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"claude/abc": "Fix codex auth bug"}), encoding="utf-8")
+    assert cached_title(cfg, "claude/abc") == "Fix codex auth bug"

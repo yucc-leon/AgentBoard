@@ -120,6 +120,83 @@ def _save_card(config: Config, key: str, card: SessionCard) -> None:
         logger.warning("Could not write summary cache: %s", e)
 
 
+# ---------------------------------------------------------------------------
+# Quick titles — cheap, list-facing labels (separate from the heavy card)
+# ---------------------------------------------------------------------------
+
+_TITLE_SYSTEM = (
+    "Give a concise title for a coding-agent conversation: at most 6 words, "
+    "no surrounding quotes, no trailing punctuation. Use the conversation's "
+    "language. Reply with ONLY the title."
+)
+
+
+def _titles_path(config: Config) -> Path:
+    return Path(config.workspace.data_dir).expanduser() / "titles.json"
+
+
+def _load_titles(config: Config) -> dict[str, str]:
+    path = _titles_path(config)
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def cached_title(config: Config, key: str) -> str | None:
+    return _load_titles(config).get(key)
+
+
+async def quick_title(
+    config: Config, key: str, seed_text: str, *, force: bool = False
+) -> str | None:
+    """A cheap LLM title from a short seed (usually the first user message).
+
+    Cached once per session — the opening message doesn't change, so we don't
+    refingerprint. Heavy enough to be worth caching, cheap enough to run across
+    a whole list. Returns None if no LLM is configured or the seed is empty.
+    """
+    seed = (seed_text or "").strip()
+    if not seed:
+        return None
+    if not force:
+        existing = cached_title(config, key)
+        if existing:
+            return existing
+
+    client = LLMClient(config.llm)
+    if not client.available:
+        return None
+    result = await client.chat(
+        [
+            {"role": "system", "content": _TITLE_SYSTEM},
+            {"role": "user", "content": redact_text(seed[:800])},
+        ],
+        # Generous enough that reasoning models (which spend the budget thinking
+        # before emitting) still have room to produce the short title. Input and
+        # output stay tiny, so this is far cheaper than a full card.
+        max_tokens=600,
+        timeout=60.0,
+    )
+    if not result or not result.get("content"):
+        return None
+    title = result["content"].strip().strip('"').strip().splitlines()[0][:80]
+    if not title:
+        return None
+
+    titles = _load_titles(config)
+    titles[key] = title
+    path = _titles_path(config)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(titles, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as e:
+        logger.warning("Could not write title cache: %s", e)
+    return title
+
+
 def cached_card(
     config: Config, key: str, state: TranscriptState | None = None
 ) -> SessionCard | None:

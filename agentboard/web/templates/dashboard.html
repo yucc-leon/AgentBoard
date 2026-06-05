@@ -7,8 +7,8 @@
         <button class="btn" onclick="refreshSessions()" id="refresh-btn">↻ Refresh</button>
         {% if summary_available %}
         {% if summary_enabled %}
-        <button class="btn" onclick="summarizeRecent()" id="sumrec-btn"
-                title="LLM-summarize recent conversations (better titles + missed items)">✨ Summarize recent</button>
+        <button class="btn" onclick="titleSessions()" id="sumrec-btn"
+                title="Give recent conversations a short LLM title (cheap)">✨ Title sessions</button>
         <details class="hdr-menu">
             <summary class="btn" title="AI summary settings">⚙</summary>
             <div class="menu-pop">
@@ -201,14 +201,14 @@ function setSummary(enabled) {
         .catch(() => toast('failed'));
 }
 
-function summarizeRecent() {
+function titleSessions() {
     const b = document.getElementById('sumrec-btn');
-    b.classList.add('btn-loading'); b.textContent = '✨ Summarizing…';
+    b.classList.add('btn-loading'); b.textContent = '✨ Titling…';
     fetch('/api/summarize-recent', {method: 'POST'}).then(r => r.json()).then(d => {
-        if (d.error) { toast(d.error); b.classList.remove('btn-loading'); b.textContent = '✨ Summarize recent'; return; }
-        toast(`summarized ${d.summarized} of ${d.scanned}`);
+        if (d.error) { toast(d.error); b.classList.remove('btn-loading'); b.textContent = '✨ Title sessions'; return; }
+        toast(`titled ${d.titled} of ${d.scanned}`);
         location.reload();
-    }).catch(() => { b.classList.remove('btn-loading'); b.textContent = '✨ Summarize recent'; toast('failed'); });
+    }).catch(() => { b.classList.remove('btn-loading'); b.textContent = '✨ Title sessions'; toast('failed'); });
 }
 
 const modal = document.getElementById('new-modal');

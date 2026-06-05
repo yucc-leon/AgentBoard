@@ -161,7 +161,7 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request):
-        from agentboard.intelligence.summary import cached_card
+        from agentboard.intelligence.summary import cached_card, cached_title
 
         # Group everything by project (the working directory's leaf name), so the
         # dashboard is a two-level menu: project → its live sessions + conversations.
@@ -189,10 +189,13 @@ def create_app(config: Config) -> FastAPI:
 
         for c in registry.conversations():
             card = cached_card(config, c.key)
+            # Title precedence: full card > cheap quick-title > first message.
+            title = (card.title if (card and card.title) else None) \
+                or cached_title(config, c.key) or c.title
             g = _group(c.project, c.machine, c.cwd)
             g["convs"].append({
                 "c": c,
-                "title": card.title if (card and card.title) else c.title,
+                "title": title,
                 "open_items": len(card.open_items) if card else 0,
             })
             g["recent"] = max(g["recent"], c.last_activity_ms)
@@ -279,24 +282,33 @@ def create_app(config: Config) -> FastAPI:
 
     @app.post("/api/summarize-recent")
     async def summarize_recent(count: int | None = None):
-        """Summarize the most-recent conversations that don't yet have a card."""
+        """Give recent conversations a cheap LLM title (the list-facing label).
+
+        Titles are derived from the opening message — one tiny LLM call each, no
+        transcript read — so a whole list can be labelled affordably. The heavy
+        card (recap + open items) is still generated lazily when a conversation
+        is opened, and its title supersedes the quick one.
+        """
         if not _summary_enabled():
             return JSONResponse({"error": "summaries disabled"}, status_code=400)
-        from agentboard.intelligence.summary import cached_card, summarize_session
+        from agentboard.intelligence.summary import (
+            cached_card,
+            cached_title,
+            quick_title,
+        )
 
-        n = count or config.summary.recent_count
+        n = count or max(config.summary.recent_count, 40)
         convs = registry.conversations()[:n]
         done = 0
         for c in convs:
-            if cached_card(config, c.key):  # cheap skip; use Regenerate to refresh
+            if cached_title(config, c.key) or cached_card(config, c.key):
                 continue
             try:
-                state = registry.conversation_transcript(c)
-                if await summarize_session(config, c.key, state):
+                if await quick_title(config, c.key, c.title):
                     done += 1
             except Exception:
-                logger.debug("summarize failed for %s", c.key, exc_info=True)
-        return {"ok": True, "summarized": done, "scanned": len(convs)}
+                logger.debug("quick_title failed for %s", c.key, exc_info=True)
+        return {"ok": True, "titled": done, "scanned": len(convs)}
 
     @app.get("/api/conversations/{machine}/{cli}/{session_id}/transcript")
     async def api_conv_transcript(machine: str, cli: str, session_id: str):
