@@ -1078,6 +1078,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
     background: var(--accent-soft); border-radius: 10px; padding: 10px 14px;
 }
 .turn-agent .turn-body { padding: 0 2px; }
+/* Optimistic local echo: shown faint until the real transcript confirms it. */
+.pending-echo { opacity: 0.55; }
+.pending-echo .turn-role::after { content: " · sending…"; font-weight: 400; opacity: 0.8; }
 .turn-body .tool-chip { margin: 4px 0; }
 .turn-body .md + .tool-chip, .turn-body .tool-chip + .md { margin-top: 6px; }
 

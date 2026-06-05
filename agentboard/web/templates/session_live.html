@@ -187,13 +187,29 @@ function switchTab(tab){
 }
 
 // ---- Send (the message box always uses send-keys; works in either tab) ----
+// Optimistic local echo: over the Tailscale relay a round-trip is slow, so show
+// the user's message instantly instead of waiting for the next transcript poll.
+// The faint bubble is replaced by the real transcript once it grows; on failure
+// it's removed and the text restored.
+function echoLocal(text){
+    const wrap=document.createElement('div');
+    wrap.className='turn turn-user pending-echo';
+    wrap.innerHTML='<div class="turn-role">You</div><div class="turn-body">'
+        +'<div class="turn-msg"><div class="md"><p>'+esc(text).replace(/\n/g,'<br>')+'</p></div></div></div>';
+    box.appendChild(wrap); box.scrollTop=box.scrollHeight;
+    return wrap;
+}
 function sendMessage(){
     const ta=document.getElementById('input'); const text=ta.value.trim(); if(!text)return;
     const btn=document.getElementById('send-btn'); btn.classList.add('btn-loading');
+    const echo=echoLocal(text); ta.value='';
     fetch(apiBase+'/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})})
         .then(r=>r.json()).then(d=>{btn.classList.remove('btn-loading');
-            if(d.error){toast(d.error);return;} ta.value=''; setTimeout(pollChat, 1200);})
-        .catch(()=>{btn.classList.remove('btn-loading');toast('send failed');});
+            if(d.error){toast(d.error); if(echo)echo.remove(); ta.value=text; return;}
+            // Re-poll in a short burst so the reply lands fast, then resume idle cadence.
+            [600,1500,3000].forEach(t=>setTimeout(pollChat,t));})
+        .catch(()=>{btn.classList.remove('btn-loading');toast('send failed');
+            if(echo)echo.remove(); ta.value=text;});
 }
 document.getElementById('input').addEventListener('keydown', e=>{
     if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); sendMessage();}
