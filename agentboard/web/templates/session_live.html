@@ -107,9 +107,15 @@ function genSummary(){
 
 // ---- Chat (parsed transcript, polled; re-render only on change) ----
 const box = document.getElementById('messages');
+const INITIAL = 6;          // show just a little context first
+let shown = INITIAL;        // how many of the most-recent messages to render
+let allMsgs = [];
 let lastSig = '';
+function loadEarlier(){ shown = allMsgs.length; lastSig = ''; renderMessages(allMsgs, 'jsonl'); }
 function renderMessages(msgs, source){
-    const sig = msgs.length + ':' + (msgs.length ? msgs[msgs.length-1].text.slice(0,40) : '');
+    allMsgs = msgs;
+    const start = Math.max(0, msgs.length - shown);
+    const sig = msgs.length + ':' + start + ':' + (msgs.length ? msgs[msgs.length-1].text.slice(0,40) : '');
     if(sig === lastSig) return;          // nothing changed → don't touch the DOM
     lastSig = sig;
     const follow = nearBottom(box);
@@ -118,11 +124,17 @@ function renderMessages(msgs, source){
             + (source==='screen' ? ' (showing screen capture — agent may be a TUI).' : '.') + '</p>';
         return;
     }
-    box.innerHTML = msgs.map(m=>{
+    let html = '';
+    if(start > 0){
+        html += `<div style="text-align:center; margin-bottom:8px;">`
+              + `<button class="btn" onclick="loadEarlier()">↑ Load ${start} earlier message${start>1?'s':''}</button></div>`;
+    }
+    html += msgs.slice(start).map(m=>{
         const role = m.role==='user' ? 'user' : 'assistant';
         return `<div class="msg-item msg-${role}"><span class="msg-role">${role}</span>`
              + `<div class="msg-content">${esc(m.text)}</div></div>`;
     }).join('');
+    box.innerHTML = html;
     if(follow) box.scrollTop = box.scrollHeight;
 }
 function pollChat(){

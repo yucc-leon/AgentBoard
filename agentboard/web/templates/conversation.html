@@ -114,16 +114,24 @@ function genSummary(){
     }).catch(()=>{b.classList.remove('btn-loading');b.textContent='↻ Generate';toast('failed');});
 }
 
+let convMsgs=[], convShown=8;
+function renderConv(){
+    const box=document.getElementById('messages');
+    if(!convMsgs.length){box.innerHTML='<p class="hint">No messages parsed.</p>';return;}
+    const start=Math.max(0, convMsgs.length-convShown);
+    let html='';
+    if(start>0){html+=`<div style="text-align:center;margin-bottom:8px;">`
+        +`<button class="btn" onclick="convShown=convMsgs.length;renderConv()">↑ Load ${start} earlier message${start>1?'s':''}</button></div>`;}
+    html+=convMsgs.slice(start).map(m=>{
+        const role=m.role==='user'?'user':'assistant';
+        return `<div class="msg-item msg-${role}"><span class="msg-role">${role}</span>
+            <div class="msg-content">${esc(m.text)}</div></div>`;
+    }).join('');
+    box.innerHTML=html;
+}
 function loadTranscript(){
     fetch(base+'/transcript').then(r=>r.json()).then(d=>{
-        const box=document.getElementById('messages');
-        const msgs=d.messages||[];
-        if(!msgs.length){box.innerHTML='<p class="hint">No messages parsed.</p>';return;}
-        box.innerHTML=msgs.map(m=>{
-            const role=m.role==='user'?'user':'assistant';
-            return `<div class="msg-item msg-${role}"><span class="msg-role">${role}</span>
-                <div class="msg-content">${esc(m.text)}</div></div>`;
-        }).join('');
+        convMsgs=d.messages||[]; renderConv();
     }).catch(()=>{});
 }
 

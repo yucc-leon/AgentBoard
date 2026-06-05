@@ -416,22 +416,47 @@ def _claude_messages(events: list[dict[str, Any]]) -> list[TranscriptMessage]:
         message = evt.get("message", {})
         if not isinstance(message, dict):
             continue
+        role = "user" if message.get("role") == "user" else "agent"
         content = message.get("content", [])
-        if isinstance(content, list):
-            text = _join_claude_content(content)
+
+        if role == "user":
+            # A "user" event is often NOT a human turn: Claude feeds tool results
+            # back as role=user with tool_result blocks. Keep only genuine human
+            # text; if there's none (pure tool output), it's the agent's tool
+            # round-trip, not something the user said — skip it.
+            text = _claude_user_text(content)
         else:
-            text = str(content)
+            text = _join_claude_content(content) if isinstance(content, list) else str(content)
+
         if not text or not text.strip() or _is_claude_boilerplate(text):
             continue
         messages.append(
             TranscriptMessage(
-                role="user" if message.get("role") == "user" else "agent",
+                role=role,
                 text=text,
                 timestamp_ms=_ts_ms(evt),
                 source_id=str(evt.get("uuid", "")),
             )
         )
     return messages
+
+
+def _claude_user_text(content: Any) -> str:
+    """Human-typed text from a Claude user event — text blocks only.
+
+    Ignores tool_result / tool_use blocks so the environment's tool round-trips
+    don't masquerade as user messages.
+    """
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts = [
+        str(b.get("text", ""))
+        for b in content
+        if isinstance(b, dict) and b.get("type") == "text"
+    ]
+    return "\n".join(p for p in parts if p)
 
 
 def _claude_token_usage(events: list[dict[str, Any]]) -> TokenUsage | None:
