@@ -779,6 +779,22 @@ h1 {
     .data-table th:nth-child(3), .data-table td:nth-child(3) { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
+/* ---- Warning banner (e.g. no agent running in pane) ---- */
+.warn-banner {
+    background: rgba(210, 153, 29, 0.12);
+    border: 1px solid var(--orange);
+    color: var(--orange);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.warn-banner .btn { padding: 4px 12px; font-size: 12px; }
+
 /* ---- Project groups (two-level menu) ---- */
 .project-group {
     margin-bottom: 18px;

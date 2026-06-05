@@ -18,6 +18,15 @@
 </div>
 <div class="hint">📁 {{ session.cwd }} · live view of this tmux pane</div>
 
+{% if not session.is_agent %}
+<div class="warn-banner" id="shell-banner">
+    ⚠ No agent is running in this pane right now — it's at a shell prompt, so a
+    message would be typed into the shell, not an agent. Launch one:
+    <button class="btn" onclick="launchAgent('codex')">▶ codex</button>
+    <button class="btn" onclick="launchAgent('claude')">▶ claude</button>
+</div>
+{% endif %}
+
 <!-- Summary panel -->
 <div class="detail-section" id="summary-section">
     <h2 style="display:flex; justify-content:space-between; align-items:center;">
@@ -146,6 +155,16 @@ function sendMessage(){
 document.getElementById('input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
+
+function launchAgent(cmd){
+    fetch(apiBase+'/send',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({text:cmd})}).then(r=>r.json()).then(d=>{
+        if(d.error){toast(d.error);return;}
+        toast('launching '+cmd+'…');
+        const b=document.getElementById('shell-banner'); if(b)b.style.display='none';
+        scrollTermBottom();
+    });
+}
 
 function killSession(){
     if(!confirm('Kill tmux session "'+NAME+'"? This ends the agent process.'))return;
