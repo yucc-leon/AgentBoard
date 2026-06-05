@@ -52,7 +52,24 @@
 <h2 style="margin:16px 0 8px;">Transcript</h2>
 <div id="messages"><p class="hint">Loading…</p></div>
 
+<!-- Continue composer: type and send, no separate Resume click. Sending revives
+     the conversation into tmux (if not already live) and lands you in the live
+     terminal with the message delivered. -->
+<div class="composer" style="position:sticky; bottom:0; padding:12px 0; background:var(--bg); margin-top:8px;">
+    <div style="display:flex; gap:8px;">
+        <textarea id="cont-input" class="form-input" rows="2"
+                  placeholder="接着说…（Enter 发送，自动 resume 进 tmux 并跳到实时终端）"
+                  style="resize:vertical; font-family:inherit;"></textarea>
+        <button class="btn btn-primary" id="cont-send" onclick="continueHere()">Send ▸</button>
+    </div>
+    <div class="hint" style="margin-top:4px;">
+        {% if conv.live_tmux %}已在运行，直接发送给实时会话。
+        {% else %}发送即自动 resume，无需先点 Resume。{% endif %}
+    </div>
+</div>
+
 <script>
+const LIVE_TMUX = {{ (conv.live_tmux | tojson) if conv.live_tmux else 'null' }};
 const MACHINE = {{ conv.machine | tojson }};
 const CLI = {{ conv.cli | tojson }};
 const SID = {{ conv.session_id | tojson }};
@@ -150,6 +167,26 @@ function resume(){
         else{toast(d.error||'failed');b.classList.remove('btn-loading');b.textContent='▶ Resume';}
     }).catch(()=>{toast('failed');b.classList.remove('btn-loading');b.textContent='▶ Resume';});
 }
+
+// Type-to-continue: stash the message, revive into tmux if needed, then jump to
+// the live terminal which delivers it once the agent is up.
+function goLive(machine, name, fresh, text){
+    try{ sessionStorage.setItem('ab_pending_'+machine+'_'+name,
+                                JSON.stringify({text, fresh})); }catch(e){}
+    location.href=`/s/${encodeURIComponent(machine)}/${encodeURIComponent(name)}`;
+}
+function continueHere(){
+    const ta=document.getElementById('cont-input'); const text=ta.value.trim(); if(!text)return;
+    const b=document.getElementById('cont-send'); b.classList.add('btn-loading'); b.textContent='Starting…';
+    if(LIVE_TMUX){ goLive(MACHINE, LIVE_TMUX, false, text); return; }
+    fetch(base+'/resume',{method:'POST'}).then(r=>r.json()).then(d=>{
+        if(d.ok){ goLive(d.machine, d.name, !d.reused, text); }
+        else{ toast(d.error||'failed'); b.classList.remove('btn-loading'); b.textContent='Send ▸'; }
+    }).catch(()=>{ toast('failed'); b.classList.remove('btn-loading'); b.textContent='Send ▸'; });
+}
+document.getElementById('cont-input').addEventListener('keydown', e=>{
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); continueHere(); }
+});
 
 loadTranscript();
 

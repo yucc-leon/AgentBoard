@@ -204,6 +204,21 @@ function killSession(){
     fetch(apiBase,{method:'DELETE'}).then(r=>r.json()).then(d=>{if(d.ok)location.href='/'; else toast(d.error||'failed');});
 }
 
+// Type-to-continue handoff: a message typed on the conversation page is stashed
+// here and delivered automatically. A freshly-resumed CLI needs a few seconds to
+// boot before send-keys reaches its prompt, so wait longer in that case. The text
+// is pre-filled meanwhile, so it's never lost — you can edit or send it yourself.
+(function consumePending(){
+    const key='ab_pending_'+MACHINE+'_'+NAME;
+    let pend=null; try{ pend=JSON.parse(sessionStorage.getItem(key)||'null'); }catch(e){}
+    if(!pend || !pend.text) return;
+    sessionStorage.removeItem(key);
+    const ta=document.getElementById('input'); ta.value=pend.text;
+    const delay = pend.fresh ? 4000 : 500;
+    toast(pend.fresh ? 'resuming… your message will send automatically' : 'sending…');
+    setTimeout(()=>{ if(document.getElementById('input').value.trim()) sendMessage(); }, delay);
+})();
+
 // boot: chat polls on a relaxed cadence (cheap local file parse, no TUI re-render)
 pollChat();
 setInterval(pollChat, 3000);
