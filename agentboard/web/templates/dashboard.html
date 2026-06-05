@@ -154,7 +154,7 @@ function filterCards() {
 
 function refreshSessions() {
     document.getElementById('refresh-btn').classList.add('btn-loading');
-    fetch('/api/sessions?refresh=true').then(() => location.reload());
+    location.href = '/?refresh=1';   // force a fresh scan (incl. remote SSH)
 }
 
 function killSession(machine, name) {

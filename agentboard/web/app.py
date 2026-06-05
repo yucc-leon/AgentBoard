@@ -180,7 +180,7 @@ def create_app(config: Config) -> FastAPI:
         return _render("login.html", request=request)
 
     @app.get("/", response_class=HTMLResponse)
-    async def dashboard(request: Request):
+    async def dashboard(request: Request, refresh: bool = False):
         from agentboard.intelligence.summary import cached_card, cached_title
 
         # Group everything by project (the working directory's leaf name), so the
@@ -196,7 +196,7 @@ def create_app(config: Config) -> FastAPI:
                 groups[key]["cwd"] = cwd
             return groups[key]
 
-        for s in registry.list():
+        for s in registry.list(refresh=refresh):
             card = cached_card(config, s.key)
             project = _proj(s.cwd)
             g = _group(project, s.machine, s.cwd)
@@ -207,7 +207,7 @@ def create_app(config: Config) -> FastAPI:
                 "next_action": card.next_action if card else "",
             })
 
-        for c in registry.conversations():
+        for c in registry.conversations(refresh=refresh):
             card = cached_card(config, c.key)
             # Title precedence: full card > cheap quick-title > first message.
             title = (card.title if (card and card.title) else None) \

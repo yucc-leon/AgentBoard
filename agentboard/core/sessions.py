@@ -268,7 +268,9 @@ class SessionRegistry:
 
     machines: list[MachineConfig]
     remote_ttl: float = 8.0
+    conv_ttl: float = 25.0
     _cache: dict[str, tuple[float, list[Session]]] = field(default_factory=dict)
+    _conv_cache: tuple[float, list] | None = field(default=None)
 
     def _machine(self, name: str) -> MachineConfig | None:
         return next((m for m in self.machines if m.name == name), None)
@@ -324,6 +326,7 @@ class SessionRegistry:
         fetched over SSH); remote work is driven through live tmux sessions.
         """
         import os
+        import time
         from collections import defaultdict
 
         from agentboard.core.conversations import (
@@ -331,6 +334,13 @@ class SessionRegistry:
             discover_conversations,
             discover_remote_conversations,
         )
+
+        # Discovery is expensive (one SSH round-trip per remote machine), so cache
+        # the assembled list for a short while. Refresh (or the Refresh button)
+        # forces a fresh scan.
+        now = time.monotonic()
+        if not refresh and self._conv_cache and now - self._conv_cache[0] < self.conv_ttl:
+            return self._conv_cache[1]
 
         live = self.list(refresh=refresh)
 
@@ -383,6 +393,7 @@ class SessionRegistry:
                     )
                 )
         out.sort(key=lambda c: c.last_activity_ms, reverse=True)
+        self._conv_cache = (now, out)
         return out
 
     def find_conversation(self, machine: str, cli: str, session_id: str):
