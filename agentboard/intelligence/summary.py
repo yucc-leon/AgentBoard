@@ -50,6 +50,10 @@ forgotten. This is the most important field; be thorough but do not invent.
 or repeatedly discussed). Paths only, most important first. Empty if none clear.
   "confidence":    0.0-1.0, your confidence in this reading.
 
+Write every field in the conversation's primary language (if the user writes \
+mostly Chinese, answer in Chinese). Keep file paths, code identifiers and \
+commands verbatim.
+
 Ground everything in the transcript. Do not fabricate. If the transcript is too \
 thin to tell, say so in summary and use empty arrays. The reader will use this \
 to RESUME the work, so optimize for fast context recovery."""
