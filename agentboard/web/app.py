@@ -60,6 +60,14 @@ def _active_elsewhere(last_activity_ms: int, live: bool) -> bool:
     return (time.time() * 1000 - last_activity_ms) < _ACTIVE_WINDOW_MS
 
 
+def _pty_read(fd: int) -> bytes:
+    """Blocking read of a pty master; b'' on EOF/closed (run in a thread)."""
+    try:
+        return os.read(fd, 65536)
+    except OSError:
+        return b""
+
+
 def _render(template: str, **ctx) -> HTMLResponse:
     return HTMLResponse(_jinja.get_template(template).render(**ctx))
 
@@ -537,8 +545,11 @@ def create_app(config: Config) -> FastAPI:
     # WebSocket — live screen stream + input
     # ------------------------------------------------------------------
 
-    @app.websocket("/ws/session/{machine}/{name}")
-    async def ws_session(ws: WebSocket, machine: str, name: str):
+    @app.websocket("/ws/term/{machine}/{name}")
+    async def ws_term(ws: WebSocket, machine: str, name: str):
+        """Real interactive terminal: a pty running `tmux attach` (local) or
+        `ssh -tt host tmux attach` (remote), with raw bytes streamed both ways so
+        xterm.js can drive Codex/Claude's interactive widgets (select/submit)."""
         if auth_required:
             from agentboard.auth.middleware import token_from_request
 
@@ -547,40 +558,76 @@ def create_app(config: Config) -> FastAPI:
                 return
         await ws.accept()
 
-        tmux = registry.tmux_for(machine)
-        if not tmux:
-            await ws.send_json({"type": "error", "content": "unknown machine"})
+        mc = _machine(machine)
+        if mc is None:
+            await ws.send_text("\r\nunknown machine\r\n")
             await ws.close()
             return
+        if mc.type == "ssh" and mc.host:
+            remote = f"tmux attach -t {shlex.quote(name)}"
+            argv = ["ssh", "-tt", *_SSH_OPTS, mc.host, remote]
+        else:
+            argv = ["tmux", "attach", "-t", name]
 
-        async def pump_input():
-            while True:
-                data = await ws.receive_json()
-                mtype = data.get("type")
-                if mtype == "send":
-                    text = (data.get("content") or "").strip()
-                    if text:
-                        await asyncio.to_thread(tmux.send, name, text, enter=True)
-                elif mtype == "key":
-                    keys = [str(k) for k in (data.get("keys") or [])]
-                    if keys:
-                        await asyncio.to_thread(tmux.send_keys, name, keys)
+        import fcntl
+        import pty
+        import struct
+        import termios
 
-        async def pump_output():
-            last = ""
+        master, slave = pty.openpty()
+        try:
+            proc = subprocess.Popen(
+                argv, stdin=slave, stdout=slave, stderr=slave,
+                start_new_session=True, close_fds=True,
+            )
+        except Exception as e:
+            os.close(master)
+            os.close(slave)
+            await ws.send_text(f"\r\nfailed to start terminal: {e}\r\n")
+            await ws.close()
+            return
+        os.close(slave)
+        loop = asyncio.get_running_loop()
+
+        def _set_winsize(cols: int, rows: int) -> None:
+            try:
+                fcntl.ioctl(master, termios.TIOCSWINSZ,
+                            struct.pack("HHHH", rows, cols, 0, 0))
+            except OSError:
+                pass
+
+        _set_winsize(80, 24)
+
+        async def pump_out():
             while True:
-                current = await asyncio.to_thread(tmux.capture, name, 120)
-                if current != last:
-                    await ws.send_json({"type": "screen", "content": current})
-                    last = current
-                await asyncio.sleep(0.6)
+                data = await loop.run_in_executor(None, _pty_read, master)
+                if not data:
+                    break
+                await ws.send_text(data.decode("utf-8", "replace"))
+
+        async def pump_in():
+            while True:
+                msg = await ws.receive_json()
+                if msg.get("t") == "i":
+                    os.write(master, str(msg.get("d", "")).encode("utf-8"))
+                elif msg.get("t") == "r":
+                    _set_winsize(int(msg.get("c", 80)), int(msg.get("r", 24)))
 
         try:
-            await asyncio.gather(pump_input(), pump_output())
+            await asyncio.gather(pump_out(), pump_in())
         except WebSocketDisconnect:
             pass
         except Exception:
-            logger.debug("ws_session closed for %s/%s", machine, name, exc_info=True)
+            logger.debug("ws_term closed for %s/%s", machine, name, exc_info=True)
+        finally:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            try:
+                os.close(master)
+            except OSError:
+                pass
 
     return app
 

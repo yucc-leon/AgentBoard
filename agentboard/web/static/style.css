@@ -1080,3 +1080,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .turn-agent .turn-body { padding: 0 2px; }
 .turn-body .tool-chip { margin: 4px 0; }
 .turn-body .md + .tool-chip, .turn-body .tool-chip + .md { margin-top: 6px; }
+
+/* ---- Terminal mobile key row ---- */
+.termkeys { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.termkeys .btn { padding: 8px 12px; font-size: 14px; min-width: 44px; }
+#terminal .xterm { height: 100%; }

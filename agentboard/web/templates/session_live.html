@@ -52,14 +52,19 @@
 </div>
 
 <div class="tab-panel" id="tab-term" style="display:none;">
-    <pre id="terminal" style="margin-top:14px; background:#0d1117; color:#e6edf3; padding:12px;
-         border-radius:10px; height:55vh; overflow:auto; white-space:pre-wrap;
-         font-family:ui-monospace,Menlo,monospace; font-size:12px; line-height:1.45;">connecting…</pre>
-    <div class="action-bar" style="margin-top:8px;">
-        <button class="btn btn-undo" onclick="sendKey(['C-c'])">⎋ Interrupt</button>
-        <button class="btn" onclick="sendKey(['Escape'])">Esc</button>
-        <button class="btn" onclick="sendKey(['Enter'])">↵ Enter</button>
-        <button class="btn" onclick="scrollTermBottom()">⤓ Latest</button>
+    <div id="terminal" style="margin-top:14px; background:#0d1117; padding:8px;
+         border-radius:10px; height:52vh;"></div>
+    <!-- Mobile keys (soft keyboards lack these) — drive select/submit widgets. -->
+    <div class="termkeys">
+        <button class="btn" onclick="termKey('\x1b[A')">↑</button>
+        <button class="btn" onclick="termKey('\x1b[B')">↓</button>
+        <button class="btn" onclick="termKey('\x1b[D')">←</button>
+        <button class="btn" onclick="termKey('\x1b[C')">→</button>
+        <button class="btn" onclick="termKey(' ')">Space</button>
+        <button class="btn" onclick="termKey('\t')">Tab</button>
+        <button class="btn" onclick="termKey('\r')">↵ Enter</button>
+        <button class="btn" onclick="termKey('\x1b')">Esc</button>
+        <button class="btn btn-undo" onclick="termKey('\x03')">⎋ Ctrl-C</button>
     </div>
 </div>
 
@@ -141,24 +146,37 @@ function pollChat(){
     }).catch(()=>{});
 }
 
-// ---- Terminal (lazy WebSocket; only when the tab is opened) ----
-const term = document.getElementById('terminal');
-let termWs = null;
-function scrollTermBottom(){term.scrollTop = term.scrollHeight;}
-function connectTerminal(){
-    if(termWs) return;
-    const proto = location.protocol==='https:' ? 'wss:' : 'ws:';
-    termWs = new WebSocket(`${proto}//${location.host}/ws/session/${encodeURIComponent(MACHINE)}/${encodeURIComponent(NAME)}`);
-    termWs.onmessage = e => {
-        const msg = JSON.parse(e.data);
-        if(msg.type==='screen'){const f=nearBottom(term); if(term.textContent!==msg.content)term.textContent=msg.content; if(f)scrollTermBottom();}
-        else if(msg.type==='error'){term.textContent='⚠ '+msg.content;}
-    };
-    termWs.onclose = () => { termWs = null; };
+// ---- Terminal: real xterm.js over a pty (lazy-loaded on first open) ----
+const XTERM_CSS = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css';
+const XTERM_JS  = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js';
+const XTERM_FIT = 'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js';
+let term = null, fitAddon = null, termWs = null, xtermReady = false;
+
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+async function loadXterm(){
+    if(xtermReady) return;
+    const css=document.createElement('link'); css.rel='stylesheet'; css.href=XTERM_CSS; document.head.appendChild(css);
+    await loadScript(XTERM_JS); await loadScript(XTERM_FIT); xtermReady=true;
 }
-function sendKey(keys){
-    if(termWs&&termWs.readyState===WebSocket.OPEN) termWs.send(JSON.stringify({type:'key',keys}));
-    else fetch(apiBase+'/key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({keys})});
+async function connectTerminal(){
+    if(term) { setTimeout(()=>{try{fitAddon.fit(); sendResize();}catch(e){}}, 50); return; }
+    try { await loadXterm(); } catch(e){ document.getElementById('terminal').textContent='failed to load terminal lib'; return; }
+    term = new Terminal({fontSize:13, cursorBlink:true, convertEol:false,
+        theme:{background:'#0d1117', foreground:'#e6edf3'}});
+    fitAddon = new FitAddon.FitAddon(); term.loadAddon(fitAddon);
+    term.open(document.getElementById('terminal')); fitAddon.fit();
+    const proto = location.protocol==='https:' ? 'wss:' : 'ws:';
+    termWs = new WebSocket(`${proto}//${location.host}/ws/term/${encodeURIComponent(MACHINE)}/${encodeURIComponent(NAME)}`);
+    termWs.onopen = () => sendResize();
+    termWs.onmessage = e => term.write(e.data);
+    termWs.onclose = () => term.write('\r\n\x1b[2m[disconnected]\x1b[0m\r\n');
+    term.onData(d => { if(termWs && termWs.readyState===1) termWs.send(JSON.stringify({t:'i', d})); });
+    window.addEventListener('resize', () => { if(document.getElementById('tab-term').style.display!=='none'){ try{fitAddon.fit(); sendResize();}catch(e){} }});
+}
+function sendResize(){ if(termWs && termWs.readyState===1 && term) termWs.send(JSON.stringify({t:'r', c:term.cols, r:term.rows})); }
+function termKey(seq){
+    if(termWs && termWs.readyState===1) termWs.send(JSON.stringify({t:'i', d:seq}));
+    if(term) term.focus();
 }
 
 function switchTab(tab){
@@ -168,14 +186,10 @@ function switchTab(tab){
     if(tab==='term') connectTerminal();   // connect only when actually viewing the terminal
 }
 
-// ---- Send ----
+// ---- Send (the message box always uses send-keys; works in either tab) ----
 function sendMessage(){
     const ta=document.getElementById('input'); const text=ta.value.trim(); if(!text)return;
     const btn=document.getElementById('send-btn'); btn.classList.add('btn-loading');
-    if(termWs&&termWs.readyState===WebSocket.OPEN){
-        termWs.send(JSON.stringify({type:'send',content:text})); btn.classList.remove('btn-loading'); ta.value='';
-        setTimeout(pollChat, 1200); return;
-    }
     fetch(apiBase+'/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})})
         .then(r=>r.json()).then(d=>{btn.classList.remove('btn-loading');
             if(d.error){toast(d.error);return;} ta.value=''; setTimeout(pollChat, 1200);})
