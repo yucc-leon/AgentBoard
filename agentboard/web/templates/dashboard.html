@@ -3,8 +3,16 @@
 
 <div class="detail-header">
     <h1>Agent Sessions</h1>
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn" onclick="refreshSessions()" id="refresh-btn">↻ Refresh</button>
+        {% if summary_available %}
+        {% if summary_enabled %}
+        <button class="btn" onclick="summarizeRecent()" id="sumrec-btn"
+                title="LLM-summarize recent conversations (better titles + missed items)">✨ Summarize recent</button>
+        {% endif %}
+        <button class="btn" onclick="toggleSummary()" id="sumtoggle-btn"
+                title="Turn AI summaries on/off">{{ '✨ AI: On' if summary_enabled else '✨ AI: Off' }}</button>
+        {% endif %}
         <button class="btn btn-undo" onclick="cleanupShells()" id="cleanup-btn">🧹 Clean up</button>
         <button class="btn" onclick="openNewSession()">＋ New project…</button>
     </div>
@@ -178,6 +186,26 @@ function cleanupShells() {
     Promise.all(shells.map(c => killSession(c.dataset.machine, c.dataset.name)
         .then(d => { if (d.ok) c.remove(); }).catch(() => {})))
         .then(() => { btn.classList.remove('btn-loading'); toast('cleaned up'); });
+}
+
+function toggleSummary() {
+    const b = document.getElementById('sumtoggle-btn');
+    const turningOn = b.textContent.includes('Off');
+    b.classList.add('btn-loading');
+    fetch('/api/summary/state', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: turningOn})})
+        .then(r => r.json()).then(() => location.reload())
+        .catch(() => { b.classList.remove('btn-loading'); toast('failed'); });
+}
+
+function summarizeRecent() {
+    const b = document.getElementById('sumrec-btn');
+    b.classList.add('btn-loading'); b.textContent = '✨ Summarizing…';
+    fetch('/api/summarize-recent', {method: 'POST'}).then(r => r.json()).then(d => {
+        if (d.error) { toast(d.error); b.classList.remove('btn-loading'); b.textContent = '✨ Summarize recent'; return; }
+        toast(`summarized ${d.summarized} of ${d.scanned}`);
+        location.reload();
+    }).catch(() => { b.classList.remove('btn-loading'); b.textContent = '✨ Summarize recent'; toast('failed'); });
 }
 
 const modal = document.getElementById('new-modal');

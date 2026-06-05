@@ -57,6 +57,42 @@ def create_app(config: Config) -> FastAPI:
     app = FastAPI(title="Agent Session Workboard", version="0.3.0")
     registry = SessionRegistry(config.machines)
 
+    # ------------------------------------------------------------------
+    # LLM summary feature state
+    #   - available: an LLM API key is configured (else the feature is dead).
+    #   - enabled: config.summary.enabled is the default; the dashboard ✨ toggle
+    #     overrides it at runtime, persisted to data_dir so the YAML stays clean.
+    # ------------------------------------------------------------------
+    from agentboard.intelligence.llm import LLMClient
+
+    summary_available = LLMClient(config.llm).available
+    _ui_state_path = Path(config.workspace.data_dir).expanduser() / "ui_state.json"
+
+    def _read_ui_state() -> dict:
+        try:
+            import json as _j
+            return _j.loads(_ui_state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def _summary_enabled() -> bool:
+        if not summary_available:
+            return False
+        override = _read_ui_state().get("summary_enabled")
+        return bool(override) if isinstance(override, bool) else config.summary.enabled
+
+    def _set_summary_enabled(value: bool) -> None:
+        import json as _j
+
+        config.summary.enabled = value
+        state = _read_ui_state()
+        state["summary_enabled"] = value
+        try:
+            _ui_state_path.parent.mkdir(parents=True, exist_ok=True)
+            _ui_state_path.write_text(_j.dumps(state), encoding="utf-8")
+        except OSError:
+            pass
+
     auth_required = config.auth.enabled and config.remote.enabled
     from agentboard.auth.middleware import AuthMiddleware, load_or_create_token
 
@@ -169,7 +205,9 @@ def create_app(config: Config) -> FastAPI:
         )
         machines = [{"name": m.name, "type": m.type} for m in config.machines]
         return _render("dashboard.html", request=request,
-                       groups=ordered, machines=machines)
+                       groups=ordered, machines=machines,
+                       summary_enabled=_summary_enabled(),
+                       summary_available=summary_available)
 
     @app.get("/s/{machine}/{name}", response_class=HTMLResponse)
     async def session_page(request: Request, machine: str, name: str):
@@ -185,6 +223,7 @@ def create_app(config: Config) -> FastAPI:
             session=s.as_dict(),
             card=card.as_dict() if card else None,
             voice_enabled=config.voice.enabled if config.voice else False,
+            summary_enabled=_summary_enabled(),
         )
 
     # ------------------------------------------------------------------
@@ -214,11 +253,50 @@ def create_app(config: Config) -> FastAPI:
             request=request,
             conv=d,
             card=card.as_dict() if card else None,
+            summary_enabled=_summary_enabled(),
         )
 
     @app.get("/api/conversations")
     async def api_conversations():
         return {"conversations": [c.as_dict() for c in registry.conversations(refresh=True)]}
+
+    # ------------------------------------------------------------------
+    # Summary feature controls
+    # ------------------------------------------------------------------
+
+    @app.get("/api/summary/state")
+    async def summary_state():
+        return {"enabled": _summary_enabled(), "available": summary_available}
+
+    @app.post("/api/summary/state")
+    async def set_summary_state(payload: dict):
+        if not summary_available:
+            return JSONResponse(
+                {"error": "no LLM configured", "available": False}, status_code=400
+            )
+        _set_summary_enabled(bool(payload.get("enabled")))
+        return {"enabled": _summary_enabled(), "available": summary_available}
+
+    @app.post("/api/summarize-recent")
+    async def summarize_recent(count: int | None = None):
+        """Summarize the most-recent conversations that don't yet have a card."""
+        if not _summary_enabled():
+            return JSONResponse({"error": "summaries disabled"}, status_code=400)
+        from agentboard.intelligence.summary import cached_card, summarize_session
+
+        n = count or config.summary.recent_count
+        convs = registry.conversations()[:n]
+        done = 0
+        for c in convs:
+            if cached_card(config, c.key):  # cheap skip; use Regenerate to refresh
+                continue
+            try:
+                state = registry.conversation_transcript(c)
+                if await summarize_session(config, c.key, state):
+                    done += 1
+            except Exception:
+                logger.debug("summarize failed for %s", c.key, exc_info=True)
+        return {"ok": True, "summarized": done, "scanned": len(convs)}
 
     @app.get("/api/conversations/{machine}/{cli}/{session_id}/transcript")
     async def api_conv_transcript(machine: str, cli: str, session_id: str):
@@ -229,6 +307,8 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/api/conversations/{machine}/{cli}/{session_id}/summary")
     async def api_conv_summary(machine: str, cli: str, session_id: str, force: bool = False):
+        if not _summary_enabled():
+            return JSONResponse({"error": "summaries disabled"}, status_code=503)
         from agentboard.intelligence.summary import summarize_session
 
         conv = registry.find_conversation(machine, cli, session_id)
@@ -354,6 +434,8 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/api/sessions/{machine}/{name}/summary")
     async def api_summary(machine: str, name: str, force: bool = False):
+        if not _summary_enabled():
+            return JSONResponse({"error": "summaries disabled"}, status_code=503)
         s = _require_session(machine, name)
         if not s:
             return JSONResponse({"error": "not found"}, status_code=404)

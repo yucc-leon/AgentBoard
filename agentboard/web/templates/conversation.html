@@ -23,13 +23,17 @@
 <div class="detail-section">
     <h2 style="display:flex; justify-content:space-between; align-items:center;">
         <span>Summary</span>
+        {% if summary_enabled %}
         <button class="btn" id="sum-btn" onclick="genSummary()" style="text-transform:none; font-size:12px;">↻ Generate</button>
+        {% endif %}
     </h2>
     <div id="summary-body">
         <div id="sum-content"></div>
         {% if not card %}
-        <p class="hint" id="sum-empty">No summary yet. Click <strong>Generate</strong> to recap
-           this conversation and surface possibly-missed items.</p>
+        <p class="hint" id="sum-empty">
+            {% if summary_enabled %}Summarizing this conversation…
+            {% else %}AI summaries are off. Turn them on from the dashboard (✨).{% endif %}
+        </p>
         {% endif %}
     </div>
 </div>
@@ -42,6 +46,7 @@ const MACHINE = {{ conv.machine | tojson }};
 const CLI = {{ conv.cli | tojson }};
 const SID = {{ conv.session_id | tojson }};
 const CARD = {{ (card | tojson) if card else 'null' }};
+const SUMMARY_ENABLED = {{ summary_enabled | tojson }};
 const base = `/api/conversations/${encodeURIComponent(MACHINE)}/${encodeURIComponent(CLI)}/${encodeURIComponent(SID)}`;
 
 function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;
@@ -99,5 +104,16 @@ function resume(){
 }
 
 loadTranscript();
+
+// Lazy auto-summary: first time you open a conversation (and the feature is on),
+// generate its card in the background so the dashboard title upgrades too.
+if (SUMMARY_ENABLED && !CARD) {
+    const b = document.getElementById('sum-btn');
+    if (b) { b.classList.add('btn-loading'); b.textContent = 'Summarizing…'; }
+    fetch(base + '/summary').then(r => r.json()).then(d => {
+        if (b) { b.classList.remove('btn-loading'); b.textContent = '↻ Regenerate'; }
+        if (!d.error) renderCard(d);
+    }).catch(() => { if (b) { b.classList.remove('btn-loading'); b.textContent = '↻ Generate'; } });
+}
 </script>
 {% endblock %}

@@ -27,20 +27,24 @@
 </div>
 {% endif %}
 
-<!-- Summary panel -->
+<!-- Summary panel (only when AI summaries are on, or one already exists) -->
+{% if summary_enabled or card %}
 <div class="detail-section" id="summary-section">
     <h2 style="display:flex; justify-content:space-between; align-items:center;">
         <span>Summary</span>
+        {% if summary_enabled %}
         <button class="btn" id="sum-btn" onclick="genSummary()" style="text-transform:none; font-size:12px;">↻ Generate</button>
+        {% endif %}
     </h2>
     <div id="summary-body">
         <div id="sum-content"></div>
         {% if not card %}
-        <p class="hint" id="sum-empty">No summary yet. Click <strong>Generate</strong> to recap
-           and surface possibly-missed items.</p>
+        <p class="hint" id="sum-empty">Live summaries are based on the current screen.
+           Click <strong>Generate</strong> for a recap.</p>
         {% endif %}
     </div>
 </div>
+{% endif %}
 
 <!-- Live terminal (this pane's real screen) -->
 <h2 style="margin:16px 0 8px;">Terminal <span class="hint">— live screen of this pane</span></h2>

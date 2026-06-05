@@ -52,6 +52,13 @@ voice:
   tts_provider: browser
   openai_api_key_env: OPENAI_API_KEY
   language: zh-CN
+
+# LLM conversation summaries: better titles + history recap + missed items.
+# Master switch; only active when the llm api key above is set. The dashboard
+# also has a ✨ toggle you can flip at runtime.
+summary:
+  enabled: true
+  recent_count: 15
 """
 
 
@@ -95,6 +102,17 @@ class VoiceConfig(BaseModel):
     language: str = "zh-CN"
 
 
+class SummaryConfig(BaseModel):
+    """LLM conversation summaries (better titles + history recap + missed items).
+
+    The master on/off; takes effect only when an LLM API key is configured.
+    The dashboard exposes a runtime toggle that overrides ``enabled`` and is
+    persisted separately so the YAML (and its comments) stay untouched.
+    """
+    enabled: bool = True
+    recent_count: int = 15   # how many recent conversations the batch button covers
+
+
 class Config(BaseModel):
     workspace: WorkspaceConfig = Field(default_factory=WorkspaceConfig)
     machines: list[MachineConfig] = Field(
@@ -104,6 +122,7 @@ class Config(BaseModel):
     remote: RemoteConfig = Field(default_factory=RemoteConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    summary: SummaryConfig = Field(default_factory=SummaryConfig)
 
 
 def _expand(path: str) -> Path:
