@@ -237,10 +237,52 @@ def parse_screen(text: str) -> TranscriptState:
 # ---------------------------------------------------------------------------
 
 
+# Pseudo-user lines the CLIs inject that aren't things the user actually said.
+_NOISE_USER = re.compile(
+    r"^\s*\[(request interrupted|tool use|no response requested|"
+    r"the user (?:doesn't|did not))",
+    re.IGNORECASE,
+)
+
+
+def _refine_messages(
+    messages: list[TranscriptMessage],
+) -> list[TranscriptMessage]:
+    """Make the message list read the way a human saw the conversation.
+
+    Two real-world artifacts handled:
+      - injected pseudo-user markers ("[Request interrupted by user]", ...) are
+        dropped — the user never typed them.
+      - retract / keep-typing / resend: when consecutive user turns (no agent
+        reply between them) are exact duplicates or one is a prefix of the next
+        (the user kept appending before sending), only the final version is
+        kept — matching what the CLI itself shows.
+    """
+    cleaned = [
+        m for m in messages
+        if not (m.role == "user" and _NOISE_USER.match(m.text or ""))
+    ]
+    out: list[TranscriptMessage] = []
+    for m in cleaned:
+        if out and out[-1].role == m.role:
+            a, b = out[-1].text.strip(), m.text.strip()
+            if a == b:                       # exact duplicate → keep the latest
+                out[-1] = m
+                continue
+            if m.role == "user":
+                if b.startswith(a):          # user kept typing / resent longer
+                    out[-1] = m
+                    continue
+                if a.startswith(b):          # later turn is a shorter prefix
+                    continue
+        out.append(m)
+    return out
+
+
 def _parse_codex_events(events: list[dict[str, Any]]) -> TranscriptState:
     if not events:
         return TranscriptState(source="codex")
-    messages = _codex_messages(events)
+    messages = _refine_messages(_codex_messages(events))
     usage = _codex_token_usage(events)
     reply = messages[-1].text if messages and messages[-1].role == "agent" else ""
     working = bool(messages) and messages[-1].role == "user"
@@ -351,7 +393,7 @@ def _codex_token_usage(events: list[dict[str, Any]]) -> TokenUsage | None:
 def _parse_claude_events(events: list[dict[str, Any]]) -> TranscriptState:
     if not events:
         return TranscriptState(source="claude")
-    messages = _claude_messages(events)
+    messages = _refine_messages(_claude_messages(events))
     usage = _claude_token_usage(events)
     reply = messages[-1].text if messages and messages[-1].role == "agent" else ""
     working = bool(messages) and messages[-1].role == "user"
@@ -368,6 +410,8 @@ def _claude_messages(events: list[dict[str, Any]]) -> list[TranscriptMessage]:
     messages: list[TranscriptMessage] = []
     for evt in events:
         if evt.get("type") not in ("user", "assistant"):
+            continue
+        if evt.get("isMeta"):  # system-injected reminders, not real turns
             continue
         message = evt.get("message", {})
         if not isinstance(message, dict):

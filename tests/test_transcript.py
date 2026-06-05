@@ -3,11 +3,57 @@
 from pathlib import Path
 
 from agentboard.core.transcript import (
+    TranscriptMessage,
     _parse_claude_events,
     _parse_codex_events,
     _read_jsonl_events,
+    _refine_messages,
     parse_screen,
 )
+
+
+def _u(t):
+    return TranscriptMessage(role="user", text=t)
+
+
+def _a(t):
+    return TranscriptMessage(role="agent", text=t)
+
+
+def test_refine_drops_interrupt_markers():
+    msgs = [_u("real question"), _u("[Request interrupted by user]"),
+            _a("answer"), _u("[Request interrupted by user for tool use]")]
+    out = _refine_messages(msgs)
+    assert [m.text for m in out] == ["real question", "answer"]
+
+
+def test_refine_collapses_prefix_retract():
+    # User typed a partial, then kept going and sent the superset.
+    msgs = [_u("I want to drop data work"),
+            _u("I want to drop data work, and also I looked at the JD")]
+    out = _refine_messages(msgs)
+    assert len(out) == 1
+    assert out[0].text == "I want to drop data work, and also I looked at the JD"
+
+
+def test_refine_collapses_exact_duplicate_resend():
+    msgs = [_u("look at my notes"), _u("[Request interrupted by user]"),
+            _u("look at my notes")]
+    out = _refine_messages(msgs)
+    assert [m.text for m in out] == ["look at my notes"]
+
+
+def test_refine_keeps_distinct_consecutive_users():
+    msgs = [_u("first thing"), _u("a totally different second thing")]
+    out = _refine_messages(msgs)
+    assert len(out) == 2
+
+
+def test_refine_keeps_normal_back_and_forth():
+    msgs = [_u("hi"), _a("hello"), _u("hi"), _a("again")]
+    # the two "hi" are not adjacent (agent between) → both kept
+    out = _refine_messages(msgs)
+    assert len(out) == 4
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
 
