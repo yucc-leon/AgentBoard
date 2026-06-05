@@ -16,21 +16,60 @@
       .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,!?]|$)/g, '$1<em>$2</em>');
   }
 
+  // Tiny, dependency-free syntax highlighter. Operates on already-escaped text
+  // (entities for < > &, literal quotes). One left-to-right pass tags comments /
+  // strings / numbers (each char consumed once, so a // inside a string stays a
+  // string); keywords are then tagged only in the not-yet-tagged spans.
+  const HL_KW = {};
+  HL_KW.python = /\b(?:def|class|return|if|elif|else|for|while|import|from|as|with|try|except|finally|raise|yield|lambda|and|or|not|in|is|pass|break|continue|global|nonlocal|async|await|assert|del|print)\b/g;
+  HL_KW.javascript = /\b(?:function|const|let|var|return|if|else|for|while|import|from|export|default|class|extends|new|try|catch|finally|throw|async|await|of|in|typeof|instanceof|delete|void|yield|switch|case|break|continue|this)\b/g;
+  HL_KW.bash = /\b(?:if|then|else|elif|fi|for|in|do|done|while|until|case|esac|function|return|export|local|source|echo|cd|set|unset|sudo)\b/g;
+  HL_KW.py = HL_KW.python;
+  HL_KW.js = HL_KW.ts = HL_KW.tsx = HL_KW.jsx = HL_KW.typescript = HL_KW.javascript;
+  HL_KW.sh = HL_KW.shell = HL_KW.zsh = HL_KW.console = HL_KW.bash;
+
+  function highlightCode(s, lang) {
+    const lk = (lang || '').toLowerCase();
+    const hashComments = !(lk === 'js' || lk === 'ts' || lk === 'javascript' ||
+                           lk === 'typescript' || lk === 'json' || lk === 'jsx' || lk === 'tsx');
+    const comment = '\\/\\*[\\s\\S]*?\\*\\/|\\/\\/[^\\n]*' + (hashComments ? '|#[^\\n]*' : '');
+    const re = new RegExp(
+      '(?<com>' + comment + ')|(?<str>`[^`]*`|"[^"\\n]*"|\'[^\'\\n]*\')|(?<num>\\b\\d+(?:\\.\\d+)?\\b)',
+      'g');
+    let out = '', last = 0, m;
+    while ((m = re.exec(s))) {
+      out += s.slice(last, m.index);
+      const g = m.groups;
+      const cls = g.com ? 'com' : g.str ? 'str' : 'num';
+      out += '<span class="hl-' + cls + '">' + m[0] + '</span>';
+      last = re.lastIndex;
+    }
+    out += s.slice(last);
+    const kw = HL_KW[lk];
+    if (kw) {
+      out = out.replace(/(<span[^>]*>[\s\S]*?<\/span>)|([^<]+)/g, (full, span, text) =>
+        span ? span : text.replace(kw, k => '<span class="hl-kw">' + k + '</span>'));
+    }
+    return out;
+  }
+
   // Minimal block markdown → HTML. Escapes everything first.
   function markdown(src) {
     const lines = esc(src == null ? '' : String(src)).split('\n');
     const out = [];
     let para = [];
-    let inCode = false, code = [];
+    let inCode = false, code = [], codeLang = '';
     const flushPara = () => {
       if (para.length) { out.push('<p>' + inline(para.join('<br>')) + '</p>'); para = []; }
     };
+    const emitCode = () => out.push('<pre class="md-pre"><code class="hl">'
+        + highlightCode(code.join('\n'), codeLang) + '</code></pre>');
     for (const raw of lines) {
       const line = raw;
-      const fence = line.match(/^\s*```/);
+      const fence = line.match(/^\s*```([\w+#-]*)/);
       if (fence) {
-        if (inCode) { out.push('<pre class="md-pre"><code>' + code.join('\n') + '</code></pre>'); code = []; inCode = false; }
-        else { flushPara(); inCode = true; }
+        if (inCode) { emitCode(); code = []; inCode = false; }
+        else { flushPara(); inCode = true; codeLang = fence[1] || ''; }
         continue;
       }
       if (inCode) { code.push(line); continue; }
@@ -44,7 +83,7 @@
       if (line.trim() === '') { flushPara(); continue; }
       para.push(line);
     }
-    if (inCode && code.length) out.push('<pre class="md-pre"><code>' + code.join('\n') + '</code></pre>');
+    if (inCode && code.length) emitCode();
     flushPara();
     return out.join('');
   }
