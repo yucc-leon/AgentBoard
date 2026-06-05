@@ -81,18 +81,48 @@ def fingerprint(state: TranscriptState) -> str:
 
 
 def _format_transcript(state: TranscriptState) -> str:
-    """Render recent turns, newest-biased, within a character budget."""
-    chunks: list[str] = []
+    """Render the transcript within a character budget.
+
+    If it fits, render the whole thing. Otherwise keep the HEAD (the original
+    goal / setup) and the TAIL (the current state) and drop the middle — losing
+    the head would erase what the work was originally for, which is exactly what
+    a context-recovery summary must not lose.
+    """
+    lines = [
+        f"[{'USER' if m.role == 'user' else 'AGENT'}] {m.text.strip()}"
+        for m in state.messages
+    ]
+    joined = "\n\n".join(lines)
+    if len(joined) <= _MAX_TRANSCRIPT_CHARS:
+        return redact_text(joined)
+
+    # Reserve ~30% for the opening turns, the rest for the most recent ones.
+    head_budget = int(_MAX_TRANSCRIPT_CHARS * 0.3)
+    head: list[int] = []
     total = 0
-    for msg in reversed(state.messages):
-        who = "USER" if msg.role == "user" else "AGENT"
-        line = f"[{who}] {msg.text.strip()}"
-        if total + len(line) > _MAX_TRANSCRIPT_CHARS:
+    for i, line in enumerate(lines):
+        if total + len(line) > head_budget:
             break
-        chunks.append(line)
+        head.append(i)
         total += len(line)
-    chunks.reverse()
-    return redact_text("\n\n".join(chunks))
+
+    tail: list[int] = []
+    total = 0
+    head_set = set(head)
+    for i in range(len(lines) - 1, -1, -1):
+        if i in head_set:
+            break  # tail has reached the head — whole thing covered
+        if total + len(lines[i]) > _MAX_TRANSCRIPT_CHARS - head_budget:
+            break
+        tail.append(i)
+        total += len(lines[i])
+    tail.reverse()
+
+    kept = [lines[i] for i in head]
+    if tail and (not head or tail[0] > head[-1] + 1):
+        kept.append("[… earlier turns omitted …]")
+    kept += [lines[i] for i in tail]
+    return redact_text("\n\n".join(kept))
 
 
 # ---------------------------------------------------------------------------

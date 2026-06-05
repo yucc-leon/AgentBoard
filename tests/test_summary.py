@@ -55,6 +55,29 @@ def test_missing_card_returns_none(tmp_path):
     assert cached_card(_cfg(tmp_path), "local/nope") is None
 
 
+def test_format_transcript_short_keeps_all():
+    from agentboard.intelligence.summary import _format_transcript
+    out = _format_transcript(_state(4))
+    assert "[USER] m0" in out and "[AGENT] m3" in out
+    assert "omitted" not in out
+
+
+def test_format_transcript_long_keeps_head_and_tail():
+    from agentboard.intelligence.summary import _MAX_TRANSCRIPT_CHARS, _format_transcript
+
+    big = "x" * 500
+    msgs = tuple(
+        TranscriptMessage(role="user" if i % 2 == 0 else "agent",
+                          text=f"MSG{i}-{big}", timestamp_ms=i)
+        for i in range(200)
+    )
+    out = _format_transcript(TranscriptState(messages=msgs, source="codex"))
+    assert "MSG0-" in out          # original goal (head) preserved
+    assert "MSG199-" in out        # current state (tail) preserved
+    assert "earlier turns omitted" in out
+    assert len(out) <= _MAX_TRANSCRIPT_CHARS + 200
+
+
 def test_title_cache_roundtrip(tmp_path):
     import json
 
