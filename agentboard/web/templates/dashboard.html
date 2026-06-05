@@ -5,6 +5,7 @@
     <h1>Agent Sessions</h1>
     <div style="display:flex; gap:8px;">
         <button class="btn" onclick="refreshSessions()" id="refresh-btn">↻ Refresh</button>
+        <button class="btn btn-undo" onclick="cleanupShells()" id="cleanup-btn">🧹 Clean up</button>
         <button class="btn" onclick="openNewSession()">＋ New project…</button>
     </div>
 </div>
@@ -39,12 +40,16 @@
     {% for row in g.live %}
     {% set s = row.s %}
     <a class="workline-card project-item" href="/s/{{ s.machine }}/{{ s.name }}"
+       data-machine="{{ s.machine }}" data-name="{{ s.name }}"
+       data-agent="{{ 'agent' if s.is_agent else 'shell' }}"
        data-search="{{ (row.title ~ ' ' ~ s.name ~ ' ' ~ s.cwd ~ ' ' ~ s.cli ~ ' ' ~ g.project)|lower }}">
         <div class="wl-header">
-            <div class="wl-title">🟢 {{ row.title or s.name }}</div>
+            <div class="wl-title">{{ '🟢' if s.is_agent else '⚪' }} {{ row.title or s.name }}</div>
             <div class="wl-badges">
                 <span class="badge source-{{ s.cli }}">{{ s.cli }}</span>
+                {% if not s.is_agent %}<span class="badge status-stale" title="no agent running">shell</span>{% endif %}
                 {% if row.open_items %}<span class="badge status-review" title="possibly-missed items">⚑ {{ row.open_items }}</span>{% endif %}
+                <button class="card-kill" title="Kill this session" onclick="killFromBtn(event, this)">🗑</button>
             </div>
         </div>
         {% if row.next_action %}<div class="wl-next-action">→ {{ row.next_action }}</div>{% endif %}
@@ -141,6 +146,38 @@ function filterCards() {
 function refreshSessions() {
     document.getElementById('refresh-btn').classList.add('btn-loading');
     fetch('/api/sessions?refresh=true').then(() => location.reload());
+}
+
+function killSession(machine, name) {
+    return fetch(`/api/sessions/${encodeURIComponent(machine)}/${encodeURIComponent(name)}`,
+                 {method: 'DELETE'}).then(r => r.json());
+}
+
+// Kill one session straight from its card (the 🗑 button).
+function killFromBtn(ev, btn) {
+    ev.preventDefault(); ev.stopPropagation();
+    const card = btn.closest('.workline-card');
+    const machine = card.dataset.machine, name = card.dataset.name;
+    if (!confirm(`Kill session "${name}"? This ends the process in that pane.`)) return;
+    btn.textContent = '…';
+    killSession(machine, name).then(d => {
+        if (d.ok) { card.remove(); toast('killed ' + name); }
+        else { toast(d.error || 'failed'); btn.textContent = '🗑'; }
+    }).catch(() => { toast('failed'); btn.textContent = '🗑'; });
+}
+
+// Bulk-clean the "failed/empty" sessions = live panes with no agent running.
+function cleanupShells() {
+    const shells = Array.from(document.querySelectorAll('.workline-card[data-agent="shell"]'));
+    if (!shells.length) { toast('No empty shell sessions to clean'); return; }
+    const names = shells.map(c => c.dataset.name);
+    if (!confirm(`Kill ${shells.length} session(s) with no agent running?\n\n` +
+                 names.join('\n') + '\n\nThis ends those panes.')) return;
+    const btn = document.getElementById('cleanup-btn');
+    btn.classList.add('btn-loading');
+    Promise.all(shells.map(c => killSession(c.dataset.machine, c.dataset.name)
+        .then(d => { if (d.ok) c.remove(); }).catch(() => {})))
+        .then(() => { btn.classList.remove('btn-loading'); toast('cleaned up'); });
 }
 
 const modal = document.getElementById('new-modal');
