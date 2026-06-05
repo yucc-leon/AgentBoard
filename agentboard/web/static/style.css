@@ -1,22 +1,22 @@
 /* Agent Session Workboard — Stylesheet */
 
 :root {
-    /* Clean light theme (Tailscale / Linear inspired) */
-    --bg: #f7f8fa;          /* app background */
-    --bg-secondary: #ffffff;/* cards, nav, panels */
-    --bg-tertiary: #eef0f3; /* inputs, hover */
-    --border: #e4e7ec;      /* subtle hairlines */
-    --text: #1c2024;        /* near-black */
-    --text-secondary: #6b7280;
-    --accent: #5b5bd6;      /* calm indigo */
-    --accent-soft: #ececfb; /* indigo tint for fills */
-    --green: #15803d;
-    --orange: #b45309;
-    --red: #dc2626;
-    --purple: #7c3aed;
-    --cyan: #0e7490;
-    --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
-    --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+    /* Warm "Claude" dark theme — terracotta on warm near-black, cream text. */
+    --bg: #1f1b17;          /* warm near-black app background */
+    --bg-secondary: #2a241e;/* cards, nav, panels */
+    --bg-tertiary: #352e26; /* inputs, hover */
+    --border: #3d362c;      /* warm hairlines */
+    --text: #ece5da;        /* cream */
+    --text-secondary: #a89a87;
+    --accent: #d97757;      /* terracotta / clay */
+    --accent-soft: #3a2a22; /* terracotta tint for fills on dark */
+    --green: #8fae6b;       /* sage */
+    --orange: #e0a458;
+    --red: #e0695f;
+    --purple: #c39bd0;
+    --cyan: #6fb3a8;        /* warm teal */
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.30), 0 1px 3px rgba(0, 0, 0, 0.22);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.42);
 }
 
 * {
@@ -151,15 +151,15 @@ body {
 }
 
 .machine-local {
-    background: rgba(63, 185, 80, 0.12);
+    background: rgba(143, 174, 107, 0.14);
     color: var(--green);
-    border: 1px solid rgba(63, 185, 80, 0.25);
+    border: 1px solid rgba(143, 174, 107, 0.28);
 }
 
 .machine-ssh {
     background: var(--accent-soft);
     color: var(--accent);
-    border: 1px solid #d7d7f5;
+    border: 1px solid rgba(217, 119, 87, 0.32);
 }
 
 /* Filter Bar */
@@ -288,24 +288,24 @@ body {
     text-transform: uppercase;
 }
 
-.status-active { background: #e7f6ec; color: var(--green); }
-.status-blocked { background: #fdecec; color: var(--red); }
-.status-review { background: #fdf2e0; color: var(--orange); }
+.status-active { background: rgba(143, 174, 107, 0.16); color: var(--green); }
+.status-blocked { background: rgba(224, 105, 95, 0.16); color: var(--red); }
+.status-review { background: rgba(224, 164, 88, 0.16); color: var(--orange); }
 .status-stale { background: var(--bg-tertiary); color: var(--text-secondary); }
 .status-inactive { background: var(--bg-tertiary); color: var(--text-secondary); }
-.status-done { background: #e7edfd; color: #1d4ed8; }
+.status-done { background: rgba(217, 119, 87, 0.16); color: var(--accent); }
 .status-unknown { background: var(--bg-tertiary); color: var(--text-secondary); }
 
-.health-continue { background: #e7f6ec; color: var(--green); }
-.health-fork { background: #f1e9fd; color: var(--purple); }
+.health-continue { background: rgba(143, 174, 107, 0.16); color: var(--green); }
+.health-fork { background: rgba(195, 155, 208, 0.16); color: var(--purple); }
 .health-archive { background: var(--bg-tertiary); color: var(--text-secondary); }
-.health-review { background: #fdf2e0; color: var(--orange); }
+.health-review { background: rgba(224, 164, 88, 0.16); color: var(--orange); }
 .health-unknown { background: var(--bg-tertiary); color: var(--text-secondary); }
 
-.source-codex { background: #e7edfd; color: #1d4ed8; }
-.source-claude { background: #e6f5f0; color: var(--cyan); }
-.source-tmux { background: #fdf2e0; color: var(--orange); }
-.source-git { background: #fdecec; color: var(--red); }
+.source-codex { background: rgba(217, 119, 87, 0.16); color: var(--accent); }
+.source-claude { background: rgba(111, 179, 168, 0.16); color: var(--cyan); }
+.source-tmux { background: rgba(224, 164, 88, 0.16); color: var(--orange); }
+.source-git { background: rgba(224, 105, 95, 0.16); color: var(--red); }
 
 /* Detail Page */
 .detail-header {
@@ -468,7 +468,7 @@ ul li code {
     background: var(--bg-tertiary);
 }
 .clickable-row:hover {
-    background: rgba(88, 166, 255, 0.08) !important;
+    background: rgba(217, 119, 87, 0.08) !important;
 }
 
 /* Seed Prompt */
@@ -596,8 +596,8 @@ h1 {
 }
 
 @keyframes pulse-border {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.4); }
-    50% { box-shadow: 0 0 0 6px rgba(63, 185, 80, 0); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(143, 174, 107, 0.45); }
+    50% { box-shadow: 0 0 0 6px rgba(143, 174, 107, 0); }
 }
 
 /* Button loading state */

@@ -52,7 +52,7 @@
 </div>
 
 <div class="tab-panel" id="tab-term" style="display:none;">
-    <div id="terminal" style="margin-top:14px; background:#0d1117; padding:8px;
+    <div id="terminal" style="margin-top:14px; background:#1a1714; padding:8px;
          border-radius:10px; height:52vh;"></div>
     <!-- Mobile keys (soft keyboards lack these) — drive select/submit widgets. -->
     <div class="termkeys">
@@ -162,7 +162,7 @@ async function connectTerminal(){
     if(term) { setTimeout(()=>{try{fitAddon.fit(); sendResize();}catch(e){}}, 50); return; }
     try { await loadXterm(); } catch(e){ document.getElementById('terminal').textContent='failed to load terminal lib'; return; }
     term = new Terminal({fontSize:13, cursorBlink:true, convertEol:false,
-        theme:{background:'#0d1117', foreground:'#e6edf3'}});
+        theme:{background:'#1a1714', foreground:'#ece5da', cursor:'#d97757'}});
     fitAddon = new FitAddon.FitAddon(); term.loadAddon(fitAddon);
     term.open(document.getElementById('terminal')); fitAddon.fit();
     const proto = location.protocol==='https:' ? 'wss:' : 'ws:';
