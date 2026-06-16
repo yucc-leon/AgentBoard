@@ -1,5 +1,7 @@
 # Agent Session Workboard 🧠
 
+*[English](README.md) · [中文](README.zh-CN.md)*
+
 Keep your machine on, open a browser **from anywhere**, unlock with a key — and
 drive every agent conversation running on it: read what Codex / Claude Code are
 doing, type replies, interrupt them, start new ones. Local sessions and remote
