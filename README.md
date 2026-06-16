@@ -2,32 +2,40 @@
 
 *[English](README.md) · [中文](README.zh-CN.md)*
 
-Drive the Codex / Claude Code sessions running on your machine — and its SSH
-remotes — from any browser, including your phone. Read what an agent is doing,
-type a reply, and pick up an old conversation where it left off.
+I leave Codex and Claude Code running on my Mac and then walk away from it.
+AgentBoard is how I check in from my phone: see what the agents are doing, type
+a reply, or pull up something I ran last week and keep going. That's really all
+it's for.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ## What it is
 
-A small web hub for your AI coding-agent sessions. A session is a **tmux pane
-running an agent CLI**; AgentBoard lists every one of them (local and over SSH)
-alongside your past Codex / Claude conversations, grouped by project. Open a
-conversation and just keep typing. An optional LLM pass gives each one a title
-plus a **recovery card** — current state, next step, and possibly-missed items —
-so you get back into context in seconds.
+A little web app in front of your agent sessions. A session is just a tmux pane
+running an agent CLI, so AgentBoard lists the ones you have open — on this
+machine or on boxes you reach over SSH — next to the Codex and Claude
+conversations already sitting on disk. Open any of them and start typing.
+
+If you've added an LLM key, it also gives each conversation a short title and a
+recap: where things stand, what's next, and the loose ends you probably forgot.
+So you don't have to re-read a wall of text to remember what you were doing.
 
 ![Recovery card](docs/screenshots/recovery-card.png)
 
 ## How it works
 
-- **Discover** — `tmux list-panes` (locally or `ssh <host> tmux …`) finds running
-  agents; recent `~/.codex` / `~/.claude` JSONL logs surface past conversations.
-  No database, and nothing is installed on remote machines.
-- **Control** — `send-keys` types into a pane; `capture-pane` and a pty stream
-  show output. One bearer token guards every route once the hub is exposed.
-- **Continue** — open a conversation and type: it resumes into tmux and delivers
-  your message in one step. The LLM card recaps what happened and what's still open.
+It leans on three tmux commands and not much else:
+
+- It finds running agents with `tmux list-panes` (or `ssh <host> tmux
+  list-panes`), and your past conversations by reading the JSONL logs Codex and
+  Claude already write under `~/.codex` and `~/.claude`. No database, and nothing
+  to install on the remote machines.
+- It types into a pane with `send-keys` and shows you the output with
+  `capture-pane` — plus a real pty stream for the terminal tab.
+- When you open an old conversation and hit send, it brings that conversation
+  back up in tmux and delivers your message. You don't click "resume" first.
+
+Expose it to the internet and one token guards everything.
 
 ## Quickstart
 
@@ -37,27 +45,26 @@ uv run agentboard init        # writes ~/.agentboard/config.yaml
 uv run agentboard web         # local hub at http://127.0.0.1:8765
 ```
 
-Agents already running in tmux appear automatically. Otherwise use **＋ New** to
-launch one.
+Agents already running in tmux show up on their own. To start a fresh one, hit
+**＋ New**.
 
-## Remote access
+## Getting to it from your phone
 
 ```bash
 uv run agentboard web --remote
 ```
 
-This binds publicly and prints the token, the access URLs, and a **scannable QR
-code** — point your phone's camera at it to log in (the token is saved as a
-cookie for 30 days, so you scan once per device). Every route then requires the
-token. `agentboard token` reprints it anytime; `agentboard token --rotate` issues
-a new one. Expose the port with whatever you like — Tailscale, `cloudflared`, an
-SSH reverse tunnel.
+This binds publicly and prints a token, the access URLs, and a QR code. Scan the
+QR with your phone and you're in — the token sticks around as a cookie for 30
+days, so you only do this once per device. Lost the token? `agentboard token`
+prints it again; `agentboard token --rotate` gives you a new one. How you expose
+the port is up to you — Tailscale, `cloudflared`, an SSH reverse tunnel, whatever.
 
 <img src="docs/screenshots/mobile.png" width="300" alt="Mobile dashboard">
 
-> **Latency:** snappy on the same Wi-Fi; slower across networks (another Wi-Fi,
-> cellular) and slower still through a relay. This only affects the control
-> channel — the agent's own work on the host runs at full speed.
+A heads-up on speed: it's snappy on the same Wi-Fi, slower from a different
+network, and slower still if your traffic goes through a relay. That lag is only
+in the controls — the agent itself keeps working on your machine at full speed.
 
 ## CLI
 
@@ -103,14 +110,15 @@ remote:
   bind_host: "0.0.0.0"
 ```
 
-Titles are LLM-generated when an LLM is configured; otherwise they fall back to
-the first line of your opening message.
+Without an LLM key the titles are just the first line of your opening message;
+add one and they get written properly.
 
 ## Privacy
 
-State lives locally under `~/.agentboard/`. Transcripts are sent to an LLM only
-when you ask for a title/summary, with secrets (API keys, tokens, private keys)
-redacted first. Remote access is off by default and token-gated when on.
+Everything stays on your machine under `~/.agentboard/`. A conversation only goes
+to an LLM when you ask for a title or summary, and secrets (API keys, tokens,
+private keys) are stripped out first. Remote access is off until you turn it on,
+and gated by the token when you do.
 
 ## Development
 
@@ -122,14 +130,13 @@ uv run --extra dev ruff check
 
 ## Contributing
 
-This started as a personal tool, so the rough edges you hit in real use are
-exactly what's most useful to hear about. **Issues, PRs, and ⭐ stars are all
-welcome.**
+This started as a personal tool, so the rough edges you run into are genuinely
+useful to hear about. Issues, PRs, and stars are all welcome.
 
 ## Acknowledgements
 
-The interactive control design (tmux-first sessions, a web hub to drive them from
-anywhere) was informed by [StarAgent](https://github.com/SiriusNEO/StarAgent).
+The interactive side — tmux-first sessions driven from a web hub — took cues from
+[StarAgent](https://github.com/SiriusNEO/StarAgent).
 
 ## License
 

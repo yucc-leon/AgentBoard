@@ -2,21 +2,27 @@
 
 *[English](README.md) · [中文](README.zh-CN.md)*
 
-在任何浏览器(包括手机)上,驱动你机器上——以及它经 SSH 连过去的远程机器上——正在跑的 Codex / Claude Code 会话。看 agent 在干什么、打字回它、把一个旧对话从中断的地方接着跟下去。
+我习惯让 Codex 和 Claude Code 在我的 Mac 上跑着,然后人就走开了。AgentBoard 就是我在外面用手机回来瞄一眼的方式:看看 agent 在干嘛、回它两句,或者把上周跑的某个对话翻出来接着弄。基本就这点事。
 
 ![仪表盘](docs/screenshots/dashboard-zh.png)
 
 ## 是什么
 
-一个管理 AI 编码 agent 会话的小型 web hub。一个会话,就是**一个跑着 agent CLI 的 tmux pane**;AgentBoard 把它们(本地的和 SSH 远程的)连同你过往的 Codex / Claude 对话一起,按项目列出来。打开一个对话,直接接着打字就行。配上 LLM 后,每个对话还会有一个标题和一张**恢复卡片**——当前进展、下一步、可能漏掉的事项——几秒钟就能找回上下文。
+一个套在 agent 会话前面的小网页。一个会话,说白了就是一个跑着 agent CLI 的 tmux pane——所以 AgentBoard 把你开着的那些(本机的,或者经 SSH 连过去的远程机器上的),和硬盘上已经存着的 Codex / Claude 对话,一起列出来。随便点开一个,直接打字就行。
+
+要是你配了 LLM 的 key,它还会给每个对话起个短标题、写一小段:进展到哪了、下一步该干嘛、还有哪些你大概率忘了的尾巴。省得你再从头爬一墙文字,去想自己当时到底在搞什么。
 
 ![恢复卡片](docs/screenshots/recovery-card-zh.png)
 
 ## 怎么运作
 
-- **发现** —— 用 `tmux list-panes`(本地或 `ssh <host> tmux …`)找到在跑的 agent;扫 `~/.codex` / `~/.claude` 最近的 JSONL 日志,把过往对话拉出来。没有数据库,远程机器上也不装任何东西。
-- **控制** —— `send-keys` 往 pane 里打字,`capture-pane` 和一条 pty 流把输出显示出来。一旦对外暴露,一把 bearer token 把守所有路由。
-- **接续** —— 打开一个对话直接打字:它会自动 resume 进 tmux 并把消息送进去,一步到位。那张 LLM 卡片则替你回顾发生了什么、还有什么没收尾。
+就靠三条 tmux 命令,没别的花样:
+
+- 用 `tmux list-panes`(或 `ssh <host> tmux list-panes`)找到在跑的 agent;过往对话呢,直接读 Codex / Claude 本来就写在 `~/.codex`、`~/.claude` 下的 JSONL 日志。没有数据库,远程机器上也不用装任何东西。
+- 用 `send-keys` 往 pane 里打字,用 `capture-pane` 把输出显示出来——终端那个标签页还接了一条真正的 pty 流。
+- 你打开一个旧对话、点发送,它就把那个对话在 tmux 里重新拉起来、把消息送进去。不用先点一下 "resume"。
+
+一旦对外暴露,一把 token 看住所有入口。
 
 ## 快速开始
 
@@ -26,19 +32,19 @@ uv run agentboard init        # 生成 ~/.agentboard/config.yaml
 uv run agentboard web         # 本地 hub:http://127.0.0.1:8765
 ```
 
-tmux 里已经在跑的 agent 会自动出现。否则点 **＋ New** 起一个。
+tmux 里已经在跑的 agent 会自己冒出来。想新起一个,点 **＋ New**。
 
-## 远程访问
+## 用手机连上
 
 ```bash
 uv run agentboard web --remote
 ```
 
-它会对外绑定,并打印出 token、访问 URL,还有一个**能扫的二维码**——手机相机一扫就登录(token 存成 cookie 保留 30 天,每台设备扫一次即可)。之后所有路由都要带 token。`agentboard token` 随时重新打印,`agentboard token --rotate` 换一个新的。端口用什么方式暴露都行——Tailscale、`cloudflared`、SSH 反向隧道。
+它会对外绑定,然后打印一个 token、访问 URL,还有一个二维码。手机一扫就进去了——token 会以 cookie 形式留 30 天,所以每台设备扫一次就行。token 丢了?`agentboard token` 再打印一遍,`agentboard token --rotate` 换个新的。端口怎么暴露随你——Tailscale、`cloudflared`、SSH 反向隧道,都行。
 
 <img src="docs/screenshots/mobile-zh.png" width="300" alt="手机端仪表盘">
 
-> **延迟:** 同一 WiFi 下很跟手;跨网络(另一个 WiFi、蜂窝)会慢一些,走中继更慢。这只影响控制通道的手感——agent 在主机上干活的速度不受影响。
+速度上提一句:同一个 WiFi 下很跟手;换个网络会慢些;要是流量还走了中继,那就更慢。但慢的只是操作那一下——agent 在你机器上干活,该多快还是多快。
 
 ## 命令行
 
@@ -84,11 +90,11 @@ remote:
   bind_host: "0.0.0.0"
 ```
 
-配了 LLM 时标题由 LLM 生成;没配则退回用开场白的第一句话。
+不配 LLM key 的话,标题就是你开场白的第一行;配上之后才会好好生成。
 
 ## 隐私
 
-所有状态都只存在本地 `~/.agentboard/` 下。只有你主动要标题/总结时,对话才会发给 LLM,且密钥(API key、token、私钥)会先脱敏。远程访问默认关闭,开启后由 token 把守。
+所有东西都留在你自己机器上的 `~/.agentboard/` 下。只有你主动要标题或总结时,对话才会发给 LLM,而且密钥(API key、token、私钥)会先被剔掉。远程访问默认不开,开了之后由 token 把守。
 
 ## 开发
 
@@ -100,11 +106,11 @@ uv run --extra dev ruff check
 
 ## 参与贡献
 
-这本来是个自用的小工具,所以你在真实场景里踩到的坑、觉得别扭的地方,正是最值得反馈的。**欢迎 issue、PR,也欢迎点个 ⭐ star。**
+这本来就是个自用的小工具,所以你在真实使用里踩到的坑,特别值得反馈。欢迎提 issue、PR,也欢迎点个 star。
 
 ## 致谢
 
-交互式控制部分的设计(tmux 常驻会话、用一个 web hub 在任何地方驱动它们)参考了 [StarAgent](https://github.com/SiriusNEO/StarAgent)。
+可交互的那部分——tmux 常驻会话、用一个 web hub 远程驱动——借鉴了 [StarAgent](https://github.com/SiriusNEO/StarAgent)。
 
 ## 许可
 
