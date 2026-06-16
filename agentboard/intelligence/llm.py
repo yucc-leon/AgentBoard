@@ -76,7 +76,8 @@ class LLMClient:
             logger.error("LLM request timed out after %.0fs", timeout)
             return None
         except httpx.HTTPStatusError as e:
-            logger.error("LLM HTTP error %d: %s", e.response.status_code, e.response.text[:500])
+            logger.error("LLM HTTP error %d", e.response.status_code)
+            logger.debug("LLM error body (first 300): %s", e.response.text[:300])
             return None
         except Exception:
             logger.exception("LLM request failed")
@@ -105,14 +106,13 @@ class LLMClient:
         json_str = _extract_json_from_text(content)
         if json_str is None:
             logger.error("Could not extract JSON from LLM response")
-            # Log first 2000 chars for debugging
-            logger.warning("LLM raw (first 2000): %s", content[:2000])
+            logger.debug("LLM raw (first 500): %s", content[:500])
             return None
         try:
             return json.loads(json_str)
         except json.JSONDecodeError as e:
             logger.error("Invalid JSON from LLM: %s", e)
-            logger.warning("JSON attempt: %s", json_str[:2000])
+            logger.debug("JSON attempt (first 500): %s", json_str[:500])
             return None
 
 

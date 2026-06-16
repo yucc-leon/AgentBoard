@@ -5,7 +5,7 @@ description = "Agent Session Workboard — a bearer-token web hub to drive your 
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Leon", email = "leon@example.com" }]
+authors = [{ name = "yucc-leon" }]
 keywords = ["agent", "session", "worktree", "codex", "claude", "tmux", "productivity"]
 
 dependencies = [

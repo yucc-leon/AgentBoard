@@ -26,7 +26,8 @@ _PANE_FORMAT = (
     "#{pane_current_path}|#{pane_current_command}|#{pane_active}|#{pane_pid}"
 )
 
-_SSH_OPTS = ["-o", "ConnectTimeout=8", "-o", "BatchMode=yes"]
+_SSH_OPTS = ["-o", "ConnectTimeout=8", "-o", "BatchMode=yes",
+             "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"]
 
 
 @dataclass(frozen=True)

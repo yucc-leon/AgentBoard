@@ -47,7 +47,8 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 _jinja = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
 
-_SSH_OPTS = ["-o", "ConnectTimeout=8", "-o", "BatchMode=yes"]
+_SSH_OPTS = ["-o", "ConnectTimeout=8", "-o", "BatchMode=yes",
+             "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"]
 
 # A conversation still being written this recently, but not in a tmux session we
 # control, is likely running elsewhere (a VS Code terminal, a bare SSH shell).
@@ -209,7 +210,11 @@ def create_app(config: Config) -> FastAPI:
                 groups[key]["cwd"] = cwd
             return groups[key]
 
-        for s in registry.list(refresh=refresh):
+        # Discovery runs blocking tmux/SSH commands — off the event loop so a slow
+        # or dead remote can't stall everything else (e.g. a live terminal WS).
+        sessions = await asyncio.to_thread(registry.list, refresh=refresh)
+        conversations = await asyncio.to_thread(registry.conversations, refresh=refresh)
+        for s in sessions:
             card = cached_card(config, s.key)
             project = _proj(s.cwd)
             g = _group(project, s.machine, s.cwd)
@@ -220,7 +225,7 @@ def create_app(config: Config) -> FastAPI:
                 "next_action": card.next_action if card else "",
             })
 
-        for c in registry.conversations(refresh=refresh):
+        for c in conversations:
             card = cached_card(config, c.key)
             # Title precedence: full card > cheap quick-title > first message.
             title = (card.title if (card and card.title) else None) \
@@ -248,7 +253,7 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/s/{machine}/{name}", response_class=HTMLResponse)
     async def session_page(request: Request, machine: str, name: str):
-        s = _require_session(machine, name)
+        s = await asyncio.to_thread(_require_session, machine, name)
         if not s:
             return HTMLResponse("<h1>Session not found</h1>", status_code=404)
         from agentboard.intelligence.summary import cached_card
@@ -279,12 +284,12 @@ def create_app(config: Config) -> FastAPI:
     async def conversation_page(request: Request, machine: str, cli: str, session_id: str):
         from agentboard.intelligence.summary import cached_card
 
-        conv = registry.find_conversation(machine, cli, session_id)
+        conv = await asyncio.to_thread(registry.find_conversation, machine, cli, session_id)
         if not conv:
             return HTMLResponse("<h1>Conversation not found</h1>", status_code=404)
         card = cached_card(config, conv.key)
         d = conv.as_dict()
-        d["live_tmux"] = _conv_live_name(conv)
+        d["live_tmux"] = await asyncio.to_thread(_conv_live_name, conv)
         return _render(
             "conversation.html",
             request=request,
@@ -296,7 +301,8 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/api/conversations")
     async def api_conversations():
-        return {"conversations": [c.as_dict() for c in registry.conversations(refresh=True)]}
+        convs = await asyncio.to_thread(registry.conversations, refresh=True)
+        return {"conversations": [c.as_dict() for c in convs]}
 
     # ------------------------------------------------------------------
     # Summary feature controls
@@ -333,7 +339,7 @@ def create_app(config: Config) -> FastAPI:
         )
 
         n = count or max(config.summary.recent_count, 40)
-        convs = registry.conversations()[:n]
+        convs = (await asyncio.to_thread(registry.conversations))[:n]
         todo = [
             c for c in convs
             if not (cached_title(config, c.key) or cached_card(config, c.key))
@@ -359,10 +365,11 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/api/conversations/{machine}/{cli}/{session_id}/transcript")
     async def api_conv_transcript(machine: str, cli: str, session_id: str):
-        conv = registry.find_conversation(machine, cli, session_id)
+        conv = await asyncio.to_thread(registry.find_conversation, machine, cli, session_id)
         if not conv:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return registry.conversation_transcript(conv).as_dict()
+        state = await asyncio.to_thread(registry.conversation_transcript, conv)
+        return state.as_dict()
 
     @app.get("/api/conversations/{machine}/{cli}/{session_id}/summary")
     async def api_conv_summary(machine: str, cli: str, session_id: str, force: bool = False):
@@ -370,10 +377,10 @@ def create_app(config: Config) -> FastAPI:
             return JSONResponse({"error": "summaries disabled"}, status_code=503)
         from agentboard.intelligence.summary import summarize_session
 
-        conv = registry.find_conversation(machine, cli, session_id)
+        conv = await asyncio.to_thread(registry.find_conversation, machine, cli, session_id)
         if not conv:
             return JSONResponse({"error": "not found"}, status_code=404)
-        state = registry.conversation_transcript(conv)
+        state = await asyncio.to_thread(registry.conversation_transcript, conv)
         card = await summarize_session(config, conv.key, state, force=force)
         if not card:
             return JSONResponse(
@@ -384,13 +391,13 @@ def create_app(config: Config) -> FastAPI:
 
     @app.post("/api/conversations/{machine}/{cli}/{session_id}/resume")
     async def api_conv_resume(machine: str, cli: str, session_id: str):
-        conv = registry.find_conversation(machine, cli, session_id)
+        conv = await asyncio.to_thread(registry.find_conversation, machine, cli, session_id)
         if not conv:
             return JSONResponse({"error": "not found"}, status_code=404)
 
         # Idempotent: if this conversation is already running in a tmux session,
         # just hand back that one instead of spawning another '-resume' clone.
-        existing = _conv_live_name(conv)
+        existing = await asyncio.to_thread(_conv_live_name, conv)
         if existing:
             return {"ok": True, "machine": machine, "name": existing, "reused": True}
 
@@ -405,11 +412,11 @@ def create_app(config: Config) -> FastAPI:
         # suffix piling up). Reused on repeat because has_session matches it.
         name = _safe_name(f"{conv.project or conv.cli}-{session_id[:6]}")
         try:
-            if not tmux.has_session(name):
-                tmux.new_session(name, conv.cwd or ".", command)
+            if not await asyncio.to_thread(tmux.has_session, name):
+                await asyncio.to_thread(tmux.new_session, name, conv.cwd or ".", command)
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
-        registry.list(refresh=True)
+        await asyncio.to_thread(registry.list, refresh=True)
         return {"ok": True, "machine": machine, "name": name}
 
     # ------------------------------------------------------------------
@@ -418,7 +425,8 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/api/sessions")
     async def api_list(refresh: bool = False):
-        return {"sessions": [s.as_dict() for s in registry.list(refresh=refresh)]}
+        sessions = await asyncio.to_thread(registry.list, refresh=refresh)
+        return {"sessions": [s.as_dict() for s in sessions]}
 
     @app.get("/api/machines")
     async def api_machines():
@@ -434,28 +442,29 @@ def create_app(config: Config) -> FastAPI:
         tmux = registry.tmux_for(machine)
         if not tmux:
             return JSONResponse({"error": f"unknown machine: {machine}"}, status_code=404)
-        if tmux.has_session(name):
+        if await asyncio.to_thread(tmux.has_session, name):
             return JSONResponse({"error": f"session '{name}' already exists"}, status_code=409)
         try:
-            tmux.new_session(name, cwd, command)
+            await asyncio.to_thread(tmux.new_session, name, cwd, command)
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
-        registry.list(refresh=True)  # warm the cache so the new session shows up
+        await asyncio.to_thread(registry.list, refresh=True)  # warm cache so it shows up
         return {"ok": True, "machine": machine, "name": name}
 
     @app.get("/api/sessions/{machine}/{name}/transcript")
     async def api_transcript(machine: str, name: str):
-        s = _require_session(machine, name)
+        s = await asyncio.to_thread(_require_session, machine, name)
         if not s:
             return JSONResponse({"error": "not found"}, status_code=404)
-        return _transcript(s).as_dict()
+        state = await asyncio.to_thread(_transcript, s)
+        return state.as_dict()
 
     @app.get("/api/sessions/{machine}/{name}/output")
     async def api_output(machine: str, name: str, lines: int = 200):
         tmux = registry.tmux_for(machine)
         if not tmux:
             return JSONResponse({"error": "unknown machine"}, status_code=404)
-        return {"output": tmux.capture(name, lines=lines)}
+        return {"output": await asyncio.to_thread(tmux.capture, name, lines=lines)}
 
     @app.post("/api/sessions/{machine}/{name}/send")
     async def api_send(machine: str, name: str, payload: dict):
@@ -491,22 +500,22 @@ def create_app(config: Config) -> FastAPI:
         if not tmux:
             return JSONResponse({"error": "unknown machine"}, status_code=404)
         try:
-            tmux.kill_session(name)
+            await asyncio.to_thread(tmux.kill_session, name)
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
-        registry.list(refresh=True)
+        await asyncio.to_thread(registry.list, refresh=True)
         return {"ok": True}
 
     @app.get("/api/sessions/{machine}/{name}/summary")
     async def api_summary(machine: str, name: str, force: bool = False):
         if not _summary_enabled():
             return JSONResponse({"error": "summaries disabled"}, status_code=503)
-        s = _require_session(machine, name)
+        s = await asyncio.to_thread(_require_session, machine, name)
         if not s:
             return JSONResponse({"error": "not found"}, status_code=404)
         from agentboard.intelligence.summary import summarize_session
 
-        state = _transcript(s)
+        state = await asyncio.to_thread(_transcript, s)
         card = await summarize_session(config, s.key, state, force=force)
         if not card:
             return JSONResponse(

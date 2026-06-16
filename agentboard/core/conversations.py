@@ -259,7 +259,8 @@ def _dedupe(convs: list[Conversation]) -> list[Conversation]:
 # Remote discovery (over SSH)
 # ---------------------------------------------------------------------------
 
-_SSH_OPTS = ["-o", "ConnectTimeout=8", "-o", "BatchMode=yes"]
+_SSH_OPTS = ["-o", "ConnectTimeout=8", "-o", "BatchMode=yes",
+             "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"]
 
 # A self-contained scanner piped to the remote python3 over stdin. It mirrors
 # the local head-parse (cwd / id / first-user-message title) and emits one JSON
