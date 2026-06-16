@@ -12,13 +12,13 @@ it's for.
 ## What it is
 
 A little web app in front of your agent sessions. A session is just a tmux pane
-running an agent CLI, so AgentBoard lists the ones you have open — on this
-machine or on boxes you reach over SSH — next to the Codex and Claude
+running an agent CLI, so AgentBoard lists the ones you have open (on this
+machine, or on boxes you reach over SSH) next to the Codex and Claude
 conversations already sitting on disk. Open any of them and start typing.
 
 If you've added an LLM key, it also gives each conversation a short title and a
-recap: where things stand, what's next, and the loose ends you probably forgot.
-So you don't have to re-read a wall of text to remember what you were doing.
+recap of where things stand, what's next, and the loose ends you probably forgot,
+so you don't have to re-read a wall of text to remember what you were doing.
 
 ![Recovery card](docs/screenshots/recovery-card.png)
 
@@ -31,7 +31,7 @@ It leans on three tmux commands and not much else:
   Claude already write under `~/.codex` and `~/.claude`. No database, and nothing
   to install on the remote machines.
 - It types into a pane with `send-keys` and shows you the output with
-  `capture-pane` — plus a real pty stream for the terminal tab.
+  `capture-pane`. The terminal tab gets a real pty stream.
 - When you open an old conversation and hit send, it brings that conversation
   back up in tmux and delivers your message. You don't click "resume" first.
 
@@ -55,16 +55,16 @@ uv run agentboard web --remote
 ```
 
 This binds publicly and prints a token, the access URLs, and a QR code. Scan the
-QR with your phone and you're in — the token sticks around as a cookie for 30
+QR with your phone and you're in. The token sticks around as a cookie for 30
 days, so you only do this once per device. Lost the token? `agentboard token`
 prints it again; `agentboard token --rotate` gives you a new one. How you expose
-the port is up to you — Tailscale, `cloudflared`, an SSH reverse tunnel, whatever.
+the port is up to you: Tailscale, `cloudflared`, an SSH reverse tunnel, whatever.
 
 <img src="docs/screenshots/mobile.png" width="300" alt="Mobile dashboard">
 
-A heads-up on speed: it's snappy on the same Wi-Fi, slower from a different
-network, and slower still if your traffic goes through a relay. That lag is only
-in the controls — the agent itself keeps working on your machine at full speed.
+A heads-up on speed: it's snappy on the same Wi-Fi and slower from a different
+network, especially if your traffic goes through a relay. That lag is only in the
+controls. The agent itself keeps working on your machine at full speed.
 
 ## CLI
 
@@ -135,7 +135,7 @@ useful to hear about. Issues, PRs, and stars are all welcome.
 
 ## Acknowledgements
 
-The interactive side — tmux-first sessions driven from a web hub — took cues from
+The interactive side (tmux-first sessions driven from a web hub) took cues from
 [StarAgent](https://github.com/SiriusNEO/StarAgent).
 
 ## License
