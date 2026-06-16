@@ -79,6 +79,12 @@ def _save_token_to_config(config_path: str, token: str) -> None:
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
+    # The config now holds the bearer token (and often an LLM API key) — keep it
+    # readable only by the owner, not world-readable under a default umask.
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
 
 
 def token_from_request(request: Request) -> str:
@@ -116,7 +122,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 response.set_cookie(
                     key=COOKIE_NAME,
                     value=self._token,
-                    httponly=False,
+                    httponly=True,   # not readable by JS → an XSS can't steal the token
                     samesite="lax",
                     max_age=86400 * 30,
                 )

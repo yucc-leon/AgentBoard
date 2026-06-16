@@ -112,7 +112,12 @@ def create_app(config: Config) -> FastAPI:
         except OSError:
             pass
 
-    auth_required = config.auth.enabled and config.remote.enabled
+    # Default-deny: exposing the hub (remote mode) ALWAYS requires the token —
+    # there is no way to expose without auth. This is gated on remote.enabled
+    # alone (not `and auth.enabled`) so a stray `auth.enabled: false` can't
+    # silently leave a publicly-bound, command-executing server wide open.
+    # Local-only binds (the default `agentboard web`) skip auth for convenience.
+    auth_required = config.remote.enabled
     from agentboard.auth.middleware import AuthMiddleware, load_or_create_token
 
     token = load_or_create_token(config.auth)
@@ -551,9 +556,11 @@ def create_app(config: Config) -> FastAPI:
         `ssh -tt host tmux attach` (remote), with raw bytes streamed both ways so
         xterm.js can drive Codex/Claude's interactive widgets (select/submit)."""
         if auth_required:
+            import hmac
+
             from agentboard.auth.middleware import token_from_request
 
-            if token_from_request(ws) != token:
+            if not hmac.compare_digest(token_from_request(ws), token):
                 await ws.close(code=4001)
                 return
         await ws.accept()
