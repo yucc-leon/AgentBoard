@@ -2,16 +2,32 @@
 
 *[English](README.md) · [中文](README.zh-CN.md)*
 
-Keep your machine on, open a browser **from anywhere**, unlock with a key — and
-drive every agent conversation running on it: read what Codex / Claude Code are
-doing, type replies, interrupt them, start new ones. Local sessions and remote
-ones (reached over SSH) show up in one place.
+Drive the Codex / Claude Code sessions running on your machine — and its SSH
+remotes — from any browser, including your phone. Read what an agent is doing,
+type a reply, and pick up an old conversation where it left off.
 
-> A session is just a **tmux pane running an agent CLI**. Everything is built on
-> three rock-solid primitives — `list-panes`, `send-keys`, `capture-pane` — run
-> locally or over SSH. No database, no daemon on remote machines.
+![Dashboard](docs/screenshots/dashboard.png)
 
----
+## What it is
+
+A small web hub for your AI coding-agent sessions. A session is a **tmux pane
+running an agent CLI**; AgentBoard lists every one of them (local and over SSH)
+alongside your past Codex / Claude conversations, grouped by project. Open a
+conversation and just keep typing. An optional LLM pass gives each one a title
+plus a **recovery card** — current state, next step, and possibly-missed items —
+so you get back into context in seconds.
+
+![Recovery card](docs/screenshots/recovery-card.png)
+
+## How it works
+
+- **Discover** — `tmux list-panes` (locally or `ssh <host> tmux …`) finds running
+  agents; recent `~/.codex` / `~/.claude` JSONL logs surface past conversations.
+  No database, and nothing is installed on remote machines.
+- **Control** — `send-keys` types into a pane; `capture-pane` and a pty stream
+  show output. One bearer token guards every route once the hub is exposed.
+- **Continue** — open a conversation and type: it resumes into tmux and delivers
+  your message in one step. The LLM card recaps what happened and what's still open.
 
 ## Quickstart
 
@@ -21,74 +37,27 @@ uv run agentboard init        # writes ~/.agentboard/config.yaml
 uv run agentboard web         # local hub at http://127.0.0.1:8765
 ```
 
-Already have agents running in tmux? They appear automatically. Otherwise use
-**＋ New** (inside any project group, or **＋ New project…**) to launch one.
+Agents already running in tmux appear automatically. Otherwise use **＋ New** to
+launch one.
 
-### Reach it from anywhere
+## Remote access
 
 ```bash
 uv run agentboard web --remote
-# 🔐 prints a bearer token and an access URL like
-#    http://0.0.0.0:8765/?token=ab_xxxxxxxx
 ```
 
-It prints the token, the access URLs, **and a scannable QR code** — point your
-phone's camera at it to log in instantly (the token is saved as a cookie for 30
-days, so you only do this once per device). Lost the token? `agentboard token`
-reprints it (and the QR) anytime; `agentboard token --rotate` issues a new one.
+This binds publicly and prints the token, the access URLs, and a **scannable QR
+code** — point your phone's camera at it to log in (the token is saved as a
+cookie for 30 days, so you scan once per device). Every route then requires the
+token. `agentboard token` reprints it anytime; `agentboard token --rotate` issues
+a new one. Expose the port with whatever you like — Tailscale, `cloudflared`, an
+SSH reverse tunnel.
 
-Then expose the port however you like and open the URL on your phone/laptop:
+<img src="docs/screenshots/mobile.png" width="300" alt="Mobile dashboard">
 
-```bash
-tailscale funnel 8765                        # easiest: auto HTTPS
-cloudflared tunnel --url http://localhost:8765
-ssh -R 80:localhost:8765 serveo.net          # quick & dirty
-```
-
-With `--remote`, **every** route requires the token (pages redirect to a login,
-`/api` and the WebSocket return 401). The token is generated once and saved back
-into your config.
-
-> **Latency note (tested across networks):** on the same Wi-Fi/LAN it's snappy.
-> Across different networks (another Wi-Fi, cellular) responses are noticeably
-> slower — and slower still if traffic goes through a relay (e.g. Tailscale
-> falling back to a DERP relay when direct connection is blocked). This only
-> affects the **control channel** (sending a message, screen refresh); the
-> agent's own work on the host runs at full speed regardless. The chat uses
-> optimistic local echo to soften the lag.
-
----
-
-## What you can do
-
-The dashboard has two tiers:
-
-- **🟢 Live now** — agents currently running in tmux (local or SSH). Drive them
-  directly: read, send messages, interrupt.
-- **💬 Conversations** — your full Codex/Claude history from their JSONL logs,
-  across every project. Titles are **LLM-generated when an LLM is configured**
-  (auto, cached); without one they fall back to the first sentence of your
-  opening message. **Just type to continue** — sending a message revives a
-  closed conversation into a live tmux
-  session and delivers your message; no separate "Resume" step. A conversation
-  that's already live links straight to its operate page.
-
-Other things:
-
-- **See all sessions** across local + SSH machines, agents first, each with a
-  one-line summary and a badge for unresolved items.
-- **Chat** — read the parsed transcript (rich for local Codex/Claude via their
-  JSONL logs; screen-capture fallback for remote) and send messages.
-- **Terminal** — a real interactive terminal (xterm.js over a pty / tmux attach),
-  with mobile key-row helpers (arrows / Tab / Enter / Esc / Ctrl-C).
-- **Summarize** — an optional LLM pass over one conversation that produces a
-  recognizable title, a history recap, the next action, and **possibly-missed
-  items** (TODOs/questions left dangling). Cached and only regenerated when the
-  conversation grows.
-- **New / Kill** — launch an agent in a fresh tmux session (with a directory
-  picker that works over SSH too), or tear one down.
-
----
+> **Latency:** snappy on the same Wi-Fi; slower across networks (another Wi-Fi,
+> cellular) and slower still through a relay. This only affects the control
+> channel — the agent's own work on the host runs at full speed.
 
 ## CLI
 
@@ -102,8 +71,6 @@ Other things:
 | `agentboard summarize [-m machine] [-n name]` | Build LLM summary cards |
 | `agentboard token [--rotate]` | Print the access token + URLs + QR (or rotate it) |
 | `agentboard web [--port 8765] [--remote]` | Start the web hub |
-
----
 
 ## Configuration
 
@@ -134,56 +101,35 @@ llm:                    # optional — only used for titles & summaries
 remote:
   enabled: false        # `web --remote` flips this on
   bind_host: "0.0.0.0"
-
-auth:
-  enabled: true
-  bearer_token: ""      # auto-generated on first remote run
 ```
 
-Remote machines need nothing installed — they're driven entirely through
-`ssh <host> tmux …`, so SSH key access and a tmux server are the only
-requirements.
-
----
+Titles are LLM-generated when an LLM is configured; otherwise they fall back to
+the first line of your opening message.
 
 ## Privacy
 
-- All state lives locally under `~/.agentboard/`.
-- Transcripts are sent to an LLM **only** when you ask for a summary, and secrets
-  (API keys, tokens, private keys) are redacted first.
-- Remote access is off by default and token-gated when on.
-
----
-
-## Architecture
-
-```
-agentboard/
-  core/
-    tmux.py         # list-panes / send-keys / capture-pane — local or over SSH
-    sessions.py     # discover & address sessions = (machine, tmux name)
-    transcript.py   # parse Codex/Claude JSONL → chat turns; screen fallback
-  intelligence/
-    llm.py          # OpenAI-compatible client
-    summary.py      # per-session SessionCard (title/recap/next/open-items) + cache
-  auth/middleware.py# default-deny bearer-token auth
-  web/app.py        # one control API + one WebSocket; Jinja pages
-  cli.py · config.py · voice/
-```
+State lives locally under `~/.agentboard/`. Transcripts are sent to an LLM only
+when you ask for a title/summary, with secrets (API keys, tokens, private keys)
+redacted first. Remote access is off by default and token-gated when on.
 
 ## Development
 
 ```bash
 uv sync --extra dev
-uv run --extra dev pytest      # core, transcript, summary, auth, web
+uv run --extra dev pytest
 uv run --extra dev ruff check
 ```
 
 ## Contributing
 
-This started as a personal tool, so the rough edges you hit in real-world use are
+This started as a personal tool, so the rough edges you hit in real use are
 exactly what's most useful to hear about. **Issues, PRs, and ⭐ stars are all
-welcome** — open an issue to report a bug or suggest something, or send a PR.
+welcome.**
+
+## Acknowledgements
+
+The interactive control design (tmux-first sessions, a web hub to drive them from
+anywhere) was informed by [StarAgent](https://github.com/SiriusNEO/StarAgent).
 
 ## License
 
